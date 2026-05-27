@@ -2,6 +2,9 @@ CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  is_admin BOOLEAN DEFAULT FALSE,
+  twofa_enabled BOOLEAN DEFAULT FALSE,
+  twofa_secret VARCHAR(64),
   created_at TIMESTAMP DEFAULT NOW()
 );
 
