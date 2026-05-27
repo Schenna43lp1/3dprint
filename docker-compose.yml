@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:80"
+    environment:
+      APP_ADMIN_USER: admin
+      APP_ADMIN_PASSWORD: admin123
     volumes:
       - ./app:/var/www/html
     depends_on:
