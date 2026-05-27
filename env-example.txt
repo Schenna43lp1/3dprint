@@ -1,0 +1,5 @@
+POSTGRES_DB=printtracker
+POSTGRES_USER=printuser
+POSTGRES_PASSWORD=strong_password_here
+APP_ADMIN_USER=admin
+APP_ADMIN_PASSWORD=strong_admin_password
