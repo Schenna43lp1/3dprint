@@ -1,4 +1,4 @@
-<?php require 'config.php';
+<?php require 'config.php'; require 'auth.php'; require_login();
 if($_SERVER['REQUEST_METHOD']==='POST'){
 $stmt=$pdo->prepare('INSERT INTO filament_spools (brand,material,color,initial_weight_g,remaining_weight_g,price_eur,storage_location) VALUES (?,?,?,?,?,?,?)');
 $stmt->execute([$_POST['brand'],$_POST['material'],$_POST['color'],$_POST['weight'],$_POST['weight'],$_POST['price'],$_POST['location']]);
