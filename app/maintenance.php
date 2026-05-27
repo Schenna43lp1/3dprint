@@ -1,4 +1,4 @@
-<?php require 'config.php';
+<?php require 'config.php'; require 'auth.php'; require_login();
 if($_SERVER['REQUEST_METHOD']==='POST'){
 if(isset($_POST['add'])){
 $stmt=$pdo->prepare('INSERT INTO maintenance_tasks (task_name,interval_days,last_done_at,notes) VALUES (?,?,?,?)');
@@ -10,6 +10,7 @@ header('Location:maintenance.php');exit;}
 $tasks=$pdo->query("SELECT *, CASE WHEN last_done_at IS NULL THEN true WHEN last_done_at + interval_days < CURRENT_DATE THEN true ELSE false END AS overdue FROM maintenance_tasks ORDER BY task_name")->fetchAll();
 ?>
 <h1>Wartung</h1>
+<p><a href='logout.php'>Logout</a></p>
 <form method='post'>
 <input type='hidden' name='add' value='1'>
 <input name='task_name' placeholder='Aufgabe'><br><br>
@@ -24,13 +25,7 @@ $tasks=$pdo->query("SELECT *, CASE WHEN last_done_at IS NULL THEN true WHEN last
 <tr>
 <td><?= htmlspecialchars($t['task_name']) ?></td>
 <td><?= $t['overdue'] ? '⚠️ Überfällig' : 'OK' ?></td>
-<td>
-<form method='post'>
-<input type='hidden' name='done' value='1'>
-<input type='hidden' name='task_id' value='<?= $t['id'] ?>'>
-<button>Erledigt</button>
-</form>
-</td>
+<td><form method='post'><input type='hidden' name='done' value='1'><input type='hidden' name='task_id' value='<?= $t['id'] ?>'><button>Erledigt</button></form></td>
 </tr>
 <?php endforeach; ?>
 </table>
