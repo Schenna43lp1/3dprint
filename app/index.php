@@ -1,8 +1,9 @@
-<?php require 'config.php';
+<?php require 'config.php'; require 'auth.php'; require_login();
 $spools = $pdo->query('SELECT * FROM filament_spools ORDER BY id DESC')->fetchAll();
 $jobs = $pdo->query('SELECT COUNT(*) FROM print_jobs')->fetchColumn();
 ?>
 <h1>3D Print Dashboard</h1>
+<p>Hallo <?= htmlspecialchars(current_user_name()) ?> | <a href='logout.php'>Logout</a></p>
 <a href='filament_add.php'>Filament hinzufügen</a> |
 <a href='job_add.php'>Druckjob</a> |
 <a href='maintenance.php'>Wartung</a>
