@@ -1,0 +1,16 @@
+# Block all direct access and execution of uploaded files
+<FilesMatch ".*">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Disable PHP execution
+php_flag engine off
+
+# No directory listing
+Options -Indexes
+
+# Prevent MIME-type sniffing
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>
