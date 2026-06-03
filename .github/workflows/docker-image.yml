@@ -1,23 +1,12 @@
-name: Docker Image CI
+# Replaced by .github/workflows/ci.yml and .github/workflows/deploy.yml
+# This workflow is disabled — do not re-enable.
+name: Docker Image CI (disabled)
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch: # manual only — never runs automatically
 
 jobs:
-  build:
+  disabled:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image
-        run: docker compose build
+      - run: echo "This workflow has been replaced by ci.yml and deploy.yml"
