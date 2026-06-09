@@ -1,196 +1,66 @@
-name: Deploy – Staging → Production (Portainer)
+name: Deploy
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Deploy target'
-        required: true
-        default: 'staging'
-        type: choice
-        options: [staging, production]
-
-# ─────────────────────────────────────────────────────────────
-# HOW IT WORKS
-#
-#  1. Build Docker image → push to GitHub Container Registry (GHCR)
-#  2. Trigger Portainer webhook → Portainer pulls new image & restarts
-#  3. Health check via Portainer API
-#  4. Manual approval gate (GitHub Environment protection)
-#  5. Same for production
-#
-# PORTAINER SETUP (one-time, per server):
-#   a) Install Portainer:
-#      docker run -d -p 9000:9000 --name portainer \
-#        -v /var/run/docker.sock:/var/run/docker.sock \
-#        -v portainer_data:/data portainer/portainer-ce
-#
-#   b) Create two Stacks in Portainer UI:
-#      - "3dprint-staging"    → uses docker-compose.yml, image tag :staging
-#      - "3dprint-production" → uses docker-compose.yml, image tag :latest
-#
-#   c) For each Stack: Enable "GitOps updates" or note the Stack Webhook URL
-#      Stacks → <stack> → Webhooks → copy URL
-#
-# REQUIRED GITHUB SECRETS (Settings → Secrets → Actions):
-#
-#   GHCR_TOKEN                    GitHub PAT with packages:write  (or use GITHUB_TOKEN)
-#   PORTAINER_WEBHOOK_STAGING     Full webhook URL from Portainer staging stack
-#   PORTAINER_WEBHOOK_PRODUCTION  Full webhook URL from Portainer production stack
-#
-# REQUIRED GITHUB ENVIRONMENTS (Settings → Environments):
-#   staging    – no protection rules (auto-deploy)
-#   production – Required reviewers → add yourself
-#
-# OPTIONAL VARIABLES (for environment URL display):
-#   STAGING_URL    e.g. https://staging.3ddruck-suedtirol.it
-#   PRODUCTION_URL e.g. https://www.3ddruck-suedtirol.it
-# ─────────────────────────────────────────────────────────────
 
 jobs:
-  # ── 1. Build & push image to GHCR ─────────────────────────
-  build:
-    name: Build & push Docker image
-    runs-on: ubuntu-latest
 
+  build:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
-    outputs:
-      sha-tag: sha-${{ github.sha }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
+      - uses: docker/build-push-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=staging
-            type=raw,value=latest
-
-      - name: Build & push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
-      - name: Summary
-        run: |
-          echo "### Docker image built & pushed" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-  # ── 2. Deploy → Staging via Portainer webhook ──────────────
-  deploy-staging:
-    name: Deploy → Staging
+  staging:
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: ${{ vars.STAGING_URL }}
-
+    environment: staging
     steps:
-      - name: Trigger Portainer staging webhook
-        run: |
-          echo "Triggering Portainer staging redeploy..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.PORTAINER_WEBHOOK_STAGING }}")
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST_STAGING }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
+            docker stop 3dprint-staging || true
+            docker rm   3dprint-staging || true
+            docker run -d --name 3dprint-staging \
+              --restart unless-stopped \
+              -p 8080:80 \
+              ghcr.io/${{ github.repository }}:${{ github.sha }}
 
-          echo "Portainer response: $HTTP_STATUS"
-          if [ "$HTTP_STATUS" != "204" ] && [ "$HTTP_STATUS" != "200" ]; then
-            echo "Portainer webhook failed with status $HTTP_STATUS"
-            exit 1
-          fi
-          echo "Webhook accepted."
-
-      - name: Wait for container to be healthy
-        run: |
-          echo "Waiting for staging to become healthy..."
-          for i in $(seq 1 12); do
-            sleep 5
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "${{ vars.STAGING_URL || 'http://localhost:8080' }}" || true)
-            echo "Attempt $i: HTTP $STATUS"
-            if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ]; then
-              echo "Staging is healthy."
-              exit 0
-            fi
-          done
-          echo "Health check timed out after 60s"
-          exit 1
-
-      - name: Summary
-        run: |
-          echo "### ✅ Staging deployed" >> $GITHUB_STEP_SUMMARY
-          echo "Image: \`ghcr.io/${{ github.repository }}:staging\`" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "URL: ${{ vars.STAGING_URL }}" >> $GITHUB_STEP_SUMMARY
-
-  # ── 3. Deploy → Production (manual approval gate) ──────────
-  deploy-production:
-    name: Deploy → Production
-    needs: deploy-staging
+  production:
+    needs: staging
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: ${{ vars.PRODUCTION_URL }}
-
+    environment: production
     steps:
-      - name: Trigger Portainer production webhook
-        run: |
-          echo "Triggering Portainer production redeploy..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.PORTAINER_WEBHOOK_PRODUCTION }}")
-
-          echo "Portainer response: $HTTP_STATUS"
-          if [ "$HTTP_STATUS" != "204" ] && [ "$HTTP_STATUS" != "200" ]; then
-            echo "Portainer webhook failed with status $HTTP_STATUS"
-            exit 1
-          fi
-          echo "Webhook accepted."
-
-      - name: Wait for container to be healthy
-        run: |
-          echo "Waiting for production to become healthy..."
-          for i in $(seq 1 12); do
-            sleep 5
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "${{ vars.PRODUCTION_URL || 'http://localhost:8080' }}" || true)
-            echo "Attempt $i: HTTP $STATUS"
-            if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ]; then
-              echo "Production is healthy."
-              exit 0
-            fi
-          done
-          echo "Health check timed out after 60s"
-          exit 1
-
-      - name: Summary
-        run: |
-          echo "### 🚀 Production deployed" >> $GITHUB_STEP_SUMMARY
-          echo "Image: \`ghcr.io/${{ github.repository }}:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "URL: ${{ vars.PRODUCTION_URL }}" >> $GITHUB_STEP_SUMMARY
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST_PRODUCTION }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
+            docker stop 3dprint-production || true
+            docker rm   3dprint-production || true
+            docker run -d --name 3dprint-production \
+              --restart unless-stopped \
+              -p 80:80 \
+              ghcr.io/${{ github.repository }}:${{ github.sha }}
