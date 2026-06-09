@@ -975,3 +975,53 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Cookie Banner ── */
+.cookie-banner {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 2rem);
+    max-width: 860px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    padding: 1rem 1.25rem;
+    z-index: 9999;
+    animation: slideUpBanner 0.35s ease;
+}
+.cookie-banner[hidden] { display: none !important; }
+
+@keyframes slideUpBanner {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.cookie-banner-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.cookie-text {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    flex: 1;
+    min-width: 200px;
+}
+
+.cookie-link {
+    color: var(--accent);
+    text-decoration: none;
+    margin-left: 0.25rem;
+}
+.cookie-link:hover { text-decoration: underline; }
+
+.cookie-actions { flex-shrink: 0; }
