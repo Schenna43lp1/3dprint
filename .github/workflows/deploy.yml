@@ -32,6 +32,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      contents: read
     steps:
       - name: Deploy to staging
         uses: appleboy/ssh-action@v1.0.3
@@ -56,6 +58,8 @@ jobs:
     needs: staging
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
     steps:
       - name: Deploy to production
         uses: appleboy/ssh-action@v1.0.3
