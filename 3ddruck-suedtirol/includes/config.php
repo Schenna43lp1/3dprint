@@ -19,6 +19,10 @@ define('ALLOWED_MIME_TYPES', [
 
 define('CSRF_TOKEN_NAME', '_csrf_token');
 
+// API-Key für die Desktop-App — UNBEDINGT ändern!
+// Neuen Key erzeugen: php -r "echo bin2hex(random_bytes(32));"
+define('ADMIN_API_KEY', 'CHANGE_ME_generate_with_php_bin2hex_random_bytes_32');
+
 // Admin login.
 // Default password: "3ddruck-admin" — UNBEDINGT ändern!
 // Neuen Hash erzeugen:  php -r "echo password_hash('dein-passwort', PASSWORD_DEFAULT);"
