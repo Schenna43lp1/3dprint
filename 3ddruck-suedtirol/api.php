@@ -4,7 +4,8 @@ require_once __DIR__ . '/includes/config.php';
 
 /* ── Auth ── */
 $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
-if (empty($key) || !defined('ADMIN_API_KEY') || !hash_equals(ADMIN_API_KEY, $key)) {
+$defined_key = defined('ADMIN_API_KEY') ? ADMIN_API_KEY : '';
+if ($key === '' || $defined_key === '' || !hash_equals($defined_key, $key)) {
     http_response_code(401);
     exit(json_encode(['error' => 'Unauthorized']));
 }
@@ -18,7 +19,13 @@ $action = $_GET['action'] ?? '';
 /* ── Hilfsfunktionen ── */
 function load_json(string $path): array {
     if (!is_file($path)) return [];
-    $d = json_decode((string) file_get_contents($path), true);
+    $fp = fopen($path, 'r');
+    if ($fp === false) return [];
+    flock($fp, LOCK_SH);
+    $raw = stream_get_contents($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    $d = json_decode((string) $raw, true);
     return is_array($d) ? $d : [];
 }
 
@@ -147,11 +154,23 @@ if ($method === 'POST') {
             exit;
         }
 
-        break;
+        if ($action === 'ship') {
+            $rows[$i]['status']    = 'versendet';
+            $rows[$i]['done']      = false;
+            $rows[$i]['tracking']  = sanitize($body['tracking'] ?? '');
+            $rows[$i]['shipped_at'] = time();
+            save_json(REQUEST_LOG, $rows);
+            echo json_encode(['ok' => true]);
+            exit;
+        }
+
+        http_response_code(400);
+        echo json_encode(['error' => 'Unknown action']);
+        exit;
     }
 
     http_response_code(400);
-    echo json_encode(['error' => 'Unknown action or ID not found']);
+    echo json_encode(['error' => 'ID not found']);
     exit;
 }
 
