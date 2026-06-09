@@ -35,7 +35,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
             docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
             docker stop 3dprint-staging || true
@@ -55,7 +55,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
             docker stop 3dprint-production || true
             docker rm   3dprint-production || true
