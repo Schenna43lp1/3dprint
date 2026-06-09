@@ -21,8 +21,12 @@ Professional website for a local 3D printing service in South Tyrol, Italy.
 ├── gallery.php         Gallery page
 ├── request.php         Request form (main conversion page)
 ├── contact.php         Contact page
-├── send_request.php    Form backend — file upload + email
+├── send_request.php    Form backend — file upload + email + request log
 ├── send_contact.php    Contact form backend
+├── login.php           Admin login
+├── logout.php          Admin logout
+├── dashboard.php       Admin dashboard — list/manage requests
+├── download.php        Admin-only download of uploaded files
 ├── impressum.php       Legal notice (placeholder)
 ├── datenschutz.php     Privacy policy (placeholder)
 ├── .htaccess           Apache config (security, caching, headers)
@@ -38,6 +42,18 @@ Professional website for a local 3D printing service in South Tyrol, Italy.
 └── uploads/
     └── .htaccess       Blocks direct access to uploaded files
 ```
+
+## Admin-Bereich
+
+- Login unter `/login.php` (auch als „Admin"-Link im Footer)
+- Nach dem Login: Dashboard unter `/dashboard.php` mit allen eingegangenen Druckanfragen
+- **Standard-Zugang:** Benutzer `admin`, Passwort `3ddruck-admin` — **unbedingt ändern!**
+- Neuen Passwort-Hash erzeugen und in `includes/config.php` (`ADMIN_PASSWORD_HASH`) eintragen:
+  ```bash
+  php -r "echo password_hash('dein-neues-passwort', PASSWORD_DEFAULT);"
+  ```
+- Anfragen werden in `uploads/requests.json` protokolliert (per `.htaccess` vor direktem Web-Zugriff geschützt)
+- Brute-Force-Schutz: nach 5 Fehlversuchen 5 Minuten gesperrt
 
 ## Setup
 

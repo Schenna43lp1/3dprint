@@ -18,12 +18,19 @@ define('ALLOWED_MIME_TYPES', [
 
 define('CSRF_TOKEN_NAME', '_csrf_token');
 
-// Admin auth — change password hash via: php -r "echo password_hash('dein-passwort', PASSWORD_DEFAULT);"
-define('ADMIN_PASSWORD_HASH', '$2y$12$placeholderHashChangeThis00000000000000000000000000000');
-define('ADMIN_EMAIL', 'admin@3ddruck-suedtirol.it');
+// Admin login.
+// Default password: "3ddruck-admin" — UNBEDINGT ändern!
+// Neuen Hash erzeugen:  php -r "echo password_hash('dein-passwort', PASSWORD_DEFAULT);"
+define('ADMIN_USER', 'admin');
+define('ADMIN_PASSWORD_HASH', '$2y$12$25WnyyA4SoEGqRPooxHejO69i8SuOfAkGGj059w2imNS573GYahwy');
+define('REQUEST_LOG', __DIR__ . '/../uploads/requests.json');
+
+function is_admin(): bool {
+    return !empty($_SESSION['admin_logged_in']);
+}
 
 function require_admin(): void {
-    if (empty($_SESSION['admin_logged_in'])) {
+    if (!is_admin()) {
         header('Location: /login.php');
         exit;
     }

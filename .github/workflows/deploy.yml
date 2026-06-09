@@ -49,6 +49,7 @@ jobs:
             docker run -d --name 3dprint-staging \
               --restart unless-stopped \
               -p 8180:80 \
+              -v 3dprint_staging_uploads:/var/www/html/uploads \
               $IMAGE:${{ github.sha }}
 
   production:
@@ -71,4 +72,5 @@ jobs:
             docker run -d --name 3dprint-production \
               --restart unless-stopped \
               -p 80:80 \
+              -v 3dprint_prod_uploads:/var/www/html/uploads \
               $IMAGE:${{ github.sha }}

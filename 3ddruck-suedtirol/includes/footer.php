@@ -65,6 +65,8 @@
                 <li class="list-inline-item"><a href="/impressum.php" class="text-muted">Impressum</a></li>
                 <li class="list-inline-item text-muted mx-1">·</li>
                 <li class="list-inline-item"><a href="/datenschutz.php" class="text-muted">Datenschutz</a></li>
+                <li class="list-inline-item text-muted mx-1">·</li>
+                <li class="list-inline-item"><a href="/login.php" class="text-muted">Admin</a></li>
             </ul>
         </div>
     </div>
