@@ -44,9 +44,11 @@ jobs:
             docker pull $IMAGE:${{ github.sha }}
             docker stop 3dprint-staging || true
             docker rm   3dprint-staging || true
+            docker ps -q --filter "publish=8180" | xargs -r docker stop
+            docker ps -aq --filter "publish=8180" | xargs -r docker rm
             docker run -d --name 3dprint-staging \
               --restart unless-stopped \
-              -p 8080:80 \
+              -p 8180:80 \
               $IMAGE:${{ github.sha }}
 
   production:
@@ -64,6 +66,8 @@ jobs:
             IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
             docker stop 3dprint-production || true
             docker rm   3dprint-production || true
+            docker ps -q --filter "publish=80" | xargs -r docker stop
+            docker ps -aq --filter "publish=80" | xargs -r docker rm
             docker run -d --name 3dprint-production \
               --restart unless-stopped \
               -p 80:80 \

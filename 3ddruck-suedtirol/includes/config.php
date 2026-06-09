@@ -18,6 +18,17 @@ define('ALLOWED_MIME_TYPES', [
 
 define('CSRF_TOKEN_NAME', '_csrf_token');
 
+// Admin auth — change password hash via: php -r "echo password_hash('dein-passwort', PASSWORD_DEFAULT);"
+define('ADMIN_PASSWORD_HASH', '$2y$12$placeholderHashChangeThis00000000000000000000000000000');
+define('ADMIN_EMAIL', 'admin@3ddruck-suedtirol.it');
+
+function require_admin(): void {
+    if (empty($_SESSION['admin_logged_in'])) {
+        header('Location: /login.php');
+        exit;
+    }
+}
+
 function generate_csrf_token(): string {
     if (empty($_SESSION[CSRF_TOKEN_NAME])) {
         $_SESSION[CSRF_TOKEN_NAME] = bin2hex(random_bytes(32));
