@@ -6,6 +6,7 @@ define('SITE_PHONE', '+39 XXX XXX XXXX');
 define('UPLOAD_DIR', __DIR__ . '/../uploads/');
 define('UPLOAD_MAX_SIZE', 50 * 1024 * 1024); // 50MB
 define('ALLOWED_EXTENSIONS', ['stl', '3mf', 'obj', 'zip']);
+// Exact MIME whitelist — no broad prefixes
 define('ALLOWED_MIME_TYPES', [
     'application/octet-stream',
     'application/zip',
@@ -17,6 +18,10 @@ define('ALLOWED_MIME_TYPES', [
 ]);
 
 define('CSRF_TOKEN_NAME', '_csrf_token');
+
+// API-Key für die Desktop-App — UNBEDINGT ändern!
+// Neuen Key erzeugen: php -r "echo bin2hex(random_bytes(32));"
+define('ADMIN_API_KEY', 'CHANGE_ME_generate_with_php_bin2hex_random_bytes_32');
 
 // Admin login.
 // Default password: "3ddruck-admin" — UNBEDINGT ändern!
@@ -56,6 +61,18 @@ function sanitize(string $str): string {
     return trim(strip_tags($str));
 }
 
+// Verhindert E-Mail-Header-Injection (CRLF-Injection)
+function sanitize_email_header(string $str): string {
+    return trim(str_replace(["\r", "\n", "\x00"], '', $str));
+}
+
 if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_samesite', 'Lax');
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.gc_maxlifetime', '3600');
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        ini_set('session.cookie_secure', '1');
+    }
     session_start();
 }

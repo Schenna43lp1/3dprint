@@ -14,10 +14,15 @@ require_once __DIR__ . '/config.php';
     $month   = date('Y-m');
     $ip_hash = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . $month);
 
+    $fp = fopen($log, 'c+');
+    if ($fp === false) return;
+    flock($fp, LOCK_EX);
+
+    $raw  = stream_get_contents($fp);
     $data = [];
-    if (is_file($log)) {
-        $raw = json_decode((string) file_get_contents($log), true);
-        if (is_array($raw)) $data = $raw;
+    if ($raw !== false && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) $data = $decoded;
     }
 
     // Heutiger Eintrag suchen oder anlegen
@@ -42,7 +47,11 @@ require_once __DIR__ . '/config.php';
     $cutoff = date('Y-m', strtotime('-13 months'));
     $data   = array_values(array_filter($data, fn($e) => ($e['month'] ?? '') >= $cutoff));
 
-    file_put_contents($log, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, json_encode($data, JSON_PRETTY_PRINT));
+    flock($fp, LOCK_UN);
+    fclose($fp);
 })();
 
 $page_title    = $page_title    ?? SITE_NAME;

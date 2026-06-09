@@ -575,21 +575,21 @@ TEXT . mail_footer());
                                             <li>
                                                 <?php if ($key === 'versendet'): ?>
                                                     <button type="button" class="dropdown-item"
-                                                            onclick="openShipModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
+                                                            onclick="openShipModal(<?= json_encode($r['id']) ?>, <?= json_encode($r['name'] ?? '') ?>)">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
                                                     </button>
                                                 <?php elseif ($key === 'angebot_gesendet'): ?>
                                                     <button type="button" class="dropdown-item"
-                                                            onclick="openQuoteModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
+                                                            onclick="openQuoteModal(<?= json_encode($r['id']) ?>, <?= json_encode($r['name'] ?? '') ?>)">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
                                                     </button>
                                                 <?php elseif ($key === 'bestaetigt'): ?>
                                                     <button type="button" class="dropdown-item"
-                                                            onclick="openInvoiceModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>', '<?= h(addslashes($r['quote_price'] ?? '')) ?>')">
+                                                            onclick="openInvoiceModal(<?= json_encode($r['id']) ?>, <?= json_encode($r['name'] ?? '') ?>, <?= json_encode($r['quote_price'] ?? '') ?>)">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?> &amp; Rechnung senden
