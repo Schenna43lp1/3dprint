@@ -8,5 +8,6 @@ on:
 jobs:
   disabled:
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - run: echo "This workflow has been replaced by ci.yml and deploy.yml"
