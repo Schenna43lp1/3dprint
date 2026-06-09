@@ -3,7 +3,21 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/config.php';
 require_admin();
 
-/* ── Anfragen laden ── */
+/* ── Status-Konfiguration ── */
+const STATUSES = [
+    'offen'            => ['label' => 'Offen',             'icon' => 'bi-inbox',            'color' => '#f59e0b', 'bg' => 'rgba(245,158,11,0.12)',  'border' => 'rgba(245,158,11,0.3)'],
+    'angebot_gesendet' => ['label' => 'Angebot gesendet',  'icon' => 'bi-envelope-open',    'color' => '#fb923c', 'bg' => 'rgba(251,146,60,0.12)',  'border' => 'rgba(251,146,60,0.3)'],
+    'bestaetigt'       => ['label' => 'Bestätigt',         'icon' => 'bi-hand-thumbs-up',   'color' => '#60a5fa', 'bg' => 'rgba(96,165,250,0.12)',  'border' => 'rgba(96,165,250,0.3)'],
+    'bezahlt'          => ['label' => 'Bezahlt',           'icon' => 'bi-cash-coin',        'color' => '#facc15', 'bg' => 'rgba(250,204,21,0.12)',  'border' => 'rgba(250,204,21,0.3)'],
+    'in_bearbeitung'   => ['label' => 'In Bearbeitung',    'icon' => 'bi-printer',          'color' => '#a78bfa', 'bg' => 'rgba(167,139,250,0.12)', 'border' => 'rgba(167,139,250,0.3)'],
+    'druckfertig'      => ['label' => 'Druckfertig',       'icon' => 'bi-check2-all',       'color' => '#34d399', 'bg' => 'rgba(52,211,153,0.12)',  'border' => 'rgba(52,211,153,0.3)'],
+    'abholbereit'      => ['label' => 'Abholbereit',       'icon' => 'bi-bag-check',        'color' => '#4ade80', 'bg' => 'rgba(74,222,128,0.12)',  'border' => 'rgba(74,222,128,0.3)'],
+    'versendet'        => ['label' => 'Versendet',         'icon' => 'bi-truck',            'color' => '#00d4ff', 'bg' => 'rgba(0,212,255,0.10)',   'border' => 'rgba(0,212,255,0.3)'],
+    'erledigt'         => ['label' => 'Erledigt',          'icon' => 'bi-check-circle',     'color' => '#86efac', 'bg' => 'rgba(134,239,172,0.12)', 'border' => 'rgba(134,239,172,0.3)'],
+    'storniert'        => ['label' => 'Storniert',         'icon' => 'bi-x-circle',         'color' => '#f87171', 'bg' => 'rgba(248,113,113,0.12)', 'border' => 'rgba(248,113,113,0.3)'],
+];
+
+/* ── Hilfsfunktionen ── */
 function load_requests(): array {
     if (!is_file(REQUEST_LOG)) return [];
     $data = json_decode((string) file_get_contents(REQUEST_LOG), true);
@@ -14,13 +28,21 @@ function save_requests(array $rows): void {
     file_put_contents(REQUEST_LOG, json_encode(array_values($rows), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
-/* ── Aktionen (löschen / Status ändern) ── */
-$flash = '';
+function get_status(array $r): string {
+    if (!empty($r['status'])) return $r['status'];
+    return !empty($r['done']) ? 'erledigt' : 'offen';
+}
+
+/* ── Aktionen ── */
+$flash      = '';
+$flash_type = 'success';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST[CSRF_TOKEN_NAME] ?? '')) {
         $flash = 'Ungültige Anfrage.';
+        $flash_type = 'error';
     } else {
-        $id     = $_POST['id'] ?? '';
+        $id     = $_POST['id']     ?? '';
         $action = $_POST['action'] ?? '';
         $rows   = load_requests();
 
@@ -28,16 +50,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (($r['id'] ?? '') !== $id) continue;
 
             if ($action === 'delete') {
-                // zugehörige Upload-Datei mit entfernen
                 if (!empty($r['file_stored'])) {
                     $f = UPLOAD_DIR . basename($r['file_stored']);
                     if (is_file($f)) @unlink($f);
                 }
                 unset($rows[$i]);
                 $flash = 'Anfrage gelöscht.';
-            } elseif ($action === 'toggle') {
-                $rows[$i]['done'] = empty($r['done']);
-                $flash = 'Status aktualisiert.';
+
+            } elseif ($action === 'set_status') {
+                $new_status = $_POST['status'] ?? '';
+                if (!array_key_exists($new_status, STATUSES)) break;
+
+                $old_status = get_status($r);
+                $rows[$i]['status'] = $new_status;
+                $rows[$i]['done']   = ($new_status === 'erledigt');
+                $flash = 'Status: ' . STATUSES[$new_status]['label'];
+
+                if ($new_status !== $old_status) {
+                    if ($new_status === 'abholbereit')  notify_customer_pickup($rows[$i]);
+                    if ($new_status === 'erledigt')     notify_customer_done($rows[$i]);
+                    if ($new_status === 'storniert')    notify_customer_cancelled($rows[$i]);
+                }
+
+            } elseif ($action === 'ship') {
+                $tracking = sanitize($_POST['tracking'] ?? '');
+                $rows[$i]['status']   = 'versendet';
+                $rows[$i]['done']     = false;
+                $rows[$i]['tracking'] = $tracking;
+                $flash = 'Versendet' . ($tracking ? ' – Tracking-Nr. gespeichert.' : '.');
+                notify_customer_shipped($rows[$i]);
+
+            } elseif ($action === 'quote') {
+                $price   = sanitize($_POST['price']   ?? '');
+                $note    = sanitize($_POST['note']    ?? '');
+                $valid   = sanitize($_POST['valid']   ?? '');
+                if (mb_strlen($price) < 1 || mb_strlen($price) > 100) {
+                    $flash = 'Bitte einen Preis angeben.';
+                    $flash_type = 'error';
+                    break;
+                }
+                $rows[$i]['status']        = 'angebot_gesendet';
+                $rows[$i]['done']          = false;
+                $rows[$i]['quote_price']   = $price;
+                $rows[$i]['quote_note']    = $note;
+                $rows[$i]['quote_valid']   = $valid;
+                $rows[$i]['quote_sent_at'] = time();
+                $flash = 'Angebot gesendet an ' . ($r['email'] ?? '');
+                notify_customer_quote($rows[$i]);
+
+            } elseif ($action === 'invoice') {
+                $inv_nr    = sanitize($_POST['inv_nr']    ?? '');
+                $inv_price = sanitize($_POST['inv_price'] ?? '');
+                $inv_due   = sanitize($_POST['inv_due']   ?? '');
+                $inv_note  = sanitize($_POST['inv_note']  ?? '');
+                $inv_iban  = sanitize($_POST['inv_iban']  ?? '');
+                if (mb_strlen($inv_price) < 1) {
+                    $flash = 'Bitte einen Rechnungsbetrag angeben.';
+                    $flash_type = 'error';
+                    break;
+                }
+                $rows[$i]['status']       = 'bestaetigt';
+                $rows[$i]['done']         = false;
+                $rows[$i]['inv_nr']       = $inv_nr;
+                $rows[$i]['inv_price']    = $inv_price;
+                $rows[$i]['inv_due']      = $inv_due;
+                $rows[$i]['inv_note']     = $inv_note;
+                $rows[$i]['inv_iban']     = $inv_iban;
+                $rows[$i]['inv_sent_at']  = time();
+                $flash = 'Rechnung gesendet an ' . ($r['email'] ?? '');
+                notify_customer_invoice($rows[$i]);
             }
             break;
         }
@@ -46,15 +127,154 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $requests = load_requests();
-// neueste zuerst
 usort($requests, fn($a, $b) => ($b['ts'] ?? 0) <=> ($a['ts'] ?? 0));
 
 $total    = count($requests);
 $today    = count(array_filter($requests, fn($r) => date('Y-m-d', $r['ts'] ?? 0) === date('Y-m-d')));
-$open     = count(array_filter($requests, fn($r) => empty($r['done'])));
+$active   = count(array_filter($requests, fn($r) => !in_array(get_status($r), ['erledigt', 'storniert'])));
 $withFile = count(array_filter($requests, fn($r) => !empty($r['file_stored'])));
 
 $csrf = generate_csrf_token();
+
+/* ── E-Mail-Funktionen ── */
+function send_mail_to_customer(array $r, string $subject_plain, string $body): void {
+    $email = $r['email'] ?? '';
+    if (!$email) return;
+    $subject = '=?UTF-8?B?' . base64_encode($subject_plain) . '?=';
+    $headers  = "From: info@3ddruck-suedtirol.it\r\nReply-To: info@3ddruck-suedtirol.it\r\n";
+    $headers .= "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n";
+    mail($email, $subject, $body, $headers);
+}
+
+function order_summary(array $r): string {
+    return "Material:  {$r['material']}\nFarbe:     {$r['color']}\nStückzahl: {$r['quantity']}";
+}
+
+function mail_footer(): string {
+    return "\nBei Fragen erreichst du uns jederzeit:\nE-Mail:   info@3ddruck-suedtirol.it\nTelefon:  +39 324 594 3473\n\nViele Grüße,\nMarkus Stufer\n3D Druck Südtirol\n--\n3ddruck-suedtirol.it";
+}
+
+function notify_customer_quote(array $r): void {
+    $name  = $r['name']        ?? 'Kunde';
+    $price = $r['quote_price'] ?? '';
+    $note  = $r['quote_note']  ?? '';
+    $valid = $r['quote_valid'] ?? '';
+
+    $note_block  = $note  ? "\nHINWEIS\n-------\n{$note}\n" : '';
+    $valid_block = $valid ? "\nAngebot gültig bis: {$valid}\n"      : '';
+
+    send_mail_to_customer($r, 'Dein Angebot von 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+vielen Dank für deine Anfrage! Hier ist dein persönliches Angebot:
+
+DEINE ANFRAGE
+-------------
+Material:  {$r['material']}
+Farbe:     {$r['color']}
+Stückzahl: {$r['quantity']}
+
+ANGEBOT
+-------
+Preis: {$price}
+{$valid_block}{$note_block}
+Um das Angebot anzunehmen, antworte einfach auf diese E-Mail oder melde dich telefonisch.
+TEXT . mail_footer());
+}
+
+function notify_customer_invoice(array $r): void {
+    $name      = $r['name']      ?? 'Kunde';
+    $inv_nr    = $r['inv_nr']    ?? '';
+    $inv_price = $r['inv_price'] ?? '';
+    $inv_due   = $r['inv_due']   ?? '';
+    $inv_note  = $r['inv_note']  ?? '';
+    $inv_iban  = $r['inv_iban']  ?? '';
+
+    $nr_line   = $inv_nr   ? "Rechnungsnummer: {$inv_nr}\n"                                                             : '';
+    $due_line  = $inv_due  ? "Zahlungsziel:    " . date('d.m.Y', strtotime($inv_due)) . "\n"                            : '';
+    $iban_line = $inv_iban ? "\nZahlungsinformationen\n---------------------\nIBAN: {$inv_iban}\nInhaber: Markus Stufer\n" : '';
+    $note_line = $inv_note ? "\nHINWEIS\n-------\n{$inv_note}\n"                                                         : '';
+
+    send_mail_to_customer($r, 'Rechnung – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+vielen Dank für deine Bestellung! Anbei deine Rechnung.
+
+RECHNUNGSDETAILS
+----------------
+{$nr_line}Betrag:          {$inv_price}
+{$due_line}
+DEINE BESTELLUNG
+----------------
+Material:  {$r['material']}
+Farbe:     {$r['color']}
+Stückzahl: {$r['quantity']}
+{$iban_line}{$note_line}
+Bitte überweise den Betrag bis zum Zahlungsziel.
+Nach Zahlungseingang beginnen wir sofort mit dem Druck.
+TEXT . mail_footer());
+}
+
+function notify_customer_pickup(array $r): void {
+    $name = $r['name'] ?? 'Kunde';
+    send_mail_to_customer($r, 'Deine Bestellung ist abholbereit – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+deine Bestellung ist fertig und kann jetzt abgeholt werden!
+
+DEINE BESTELLUNG
+----------------
+{$r['material']}  ·  {$r['color']}  ·  {$r['quantity']}×
+
+Abholadresse: Schennastraße 81, 39017 Schenna (Scena)
+Öffnungszeiten: Mo–Fr 09:00–18:00 Uhr
+
+Bitte melde dich kurz per E-Mail oder Telefon, um einen Abholtermin zu vereinbaren.
+TEXT . mail_footer());
+}
+
+function notify_customer_shipped(array $r): void {
+    $name     = $r['name']     ?? 'Kunde';
+    $tracking = $r['tracking'] ?? '';
+    $t_line   = $tracking ? "Tracking-Nummer: {$tracking}\n" : "";
+    send_mail_to_customer($r, 'Deine Bestellung wurde versendet – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+deine Bestellung ist unterwegs!
+
+DEINE BESTELLUNG
+----------------
+{$r['material']}  ·  {$r['color']}  ·  {$r['quantity']}×
+
+VERSANDINFO
+-----------
+{$t_line}
+TEXT . mail_footer());
+}
+
+function notify_customer_done(array $r): void {
+    $name = $r['name'] ?? 'Kunde';
+    send_mail_to_customer($r, 'Deine Druckanfrage wurde abgeschlossen – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+deine Anfrage bei 3D Druck Südtirol wurde erfolgreich abgeschlossen.
+Vielen Dank für dein Vertrauen!
+
+DEINE BESTELLUNG
+----------------
+{$r['material']}  ·  {$r['color']}  ·  {$r['quantity']}×
+TEXT . mail_footer());
+}
+
+function notify_customer_cancelled(array $r): void {
+    $name = $r['name'] ?? 'Kunde';
+    send_mail_to_customer($r, 'Deine Anfrage bei 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+leider müssen wir deine Druckanfrage stornieren.
+Bitte kontaktiere uns bei Fragen direkt per E-Mail oder Telefon.
+TEXT . mail_footer());
+}
 ?>
 <!DOCTYPE html>
 <html lang="de" data-bs-theme="dark">
@@ -69,6 +289,14 @@ $csrf = generate_csrf_token();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/css/style.css">
     <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg">
+    <style>
+        .status-dropdown { min-width: 200px; }
+        .status-dropdown .dropdown-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+        .status-dropdown .dropdown-item i { width: 16px; text-align: center; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .row-cancelled td { opacity: 0.45; }
+        .row-done td { opacity: 0.7; }
+    </style>
 </head>
 <body class="dashboard-page">
 
@@ -125,8 +353,8 @@ $csrf = generate_csrf_token();
             <div class="stat-card">
                 <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
                 <div>
-                    <div class="stat-value"><?= $open ?></div>
-                    <div class="stat-label">Offen</div>
+                    <div class="stat-value"><?= $active ?></div>
+                    <div class="stat-label">Aktiv</div>
                 </div>
             </div>
         </div>
@@ -158,7 +386,7 @@ $csrf = generate_csrf_token();
                 <table class="table dash-table align-middle">
                     <thead>
                         <tr>
-                            <th>Status</th>
+                            <th style="min-width:160px">Status</th>
                             <th>Datum</th>
                             <th>Kunde</th>
                             <th>Material</th>
@@ -169,13 +397,44 @@ $csrf = generate_csrf_token();
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($requests as $r): ?>
-                        <tr class="<?= !empty($r['done']) ? 'row-done' : '' ?>">
+                    <?php foreach ($requests as $r):
+                        $status = get_status($r);
+                        $sc     = STATUSES[$status] ?? STATUSES['offen'];
+                        $rowClass = match($status) {
+                            'erledigt'  => 'row-done',
+                            'storniert' => 'row-cancelled',
+                            default     => '',
+                        };
+                    ?>
+                        <tr class="<?= $rowClass ?>">
                             <td>
-                                <?php if (!empty($r['done'])): ?>
-                                    <span class="pill pill-done"><i class="bi bi-check-lg"></i> Erledigt</span>
-                                <?php else: ?>
-                                    <span class="pill pill-open">Offen</span>
+                                <span class="pill" style="
+                                    background:<?= $sc['bg'] ?>;
+                                    color:<?= $sc['color'] ?>;
+                                    border:1px solid <?= $sc['border'] ?>;
+                                    display:inline-flex;align-items:center;gap:.3rem;
+                                    font-size:.72rem;font-weight:700;
+                                    padding:.2rem .6rem;border-radius:50px;white-space:nowrap;">
+                                    <i class="bi <?= $sc['icon'] ?>"></i><?= h($sc['label']) ?>
+                                </span>
+                                <?php if ($status === 'versendet' && !empty($r['tracking'])): ?>
+                                    <br><span class="text-muted small mt-1 d-inline-block">
+                                        <i class="bi bi-upc-scan me-1"></i><?= h($r['tracking']) ?>
+                                    </span>
+                                <?php elseif ($status === 'angebot_gesendet' && !empty($r['quote_price'])): ?>
+                                    <br><span class="text-muted small mt-1 d-inline-block">
+                                        <i class="bi bi-currency-euro me-1"></i><?= h($r['quote_price']) ?>
+                                        <?php if (!empty($r['quote_valid'])): ?>
+                                            · bis <?= h(date('d.m.Y', strtotime($r['quote_valid']))) ?>
+                                        <?php endif; ?>
+                                    </span>
+                                <?php elseif ($status === 'bestaetigt' && !empty($r['inv_price'])): ?>
+                                    <br><span class="text-muted small mt-1 d-inline-block">
+                                        <i class="bi bi-receipt me-1"></i><?= h($r['inv_price']) ?>
+                                        <?php if (!empty($r['inv_nr'])): ?>
+                                            · Nr. <?= h($r['inv_nr']) ?>
+                                        <?php endif; ?>
+                                    </span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-nowrap small">
@@ -205,17 +464,62 @@ $csrf = generate_csrf_token();
                                 <?php endif; ?>
                             </td>
                             <td class="text-end text-nowrap">
-                                <form method="post" class="d-inline">
-                                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                    <input type="hidden" name="id" value="<?= h($r['id']) ?>">
-                                    <button name="action" value="toggle" class="icon-btn" title="Status wechseln">
-                                        <i class="bi bi-check2-square"></i>
+                                <!-- Status-Dropdown -->
+                                <div class="dropdown d-inline-block">
+                                    <button class="icon-btn" title="Status ändern"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="bi bi-arrow-left-right"></i>
                                     </button>
-                                </form>
+                                    <ul class="dropdown-menu dropdown-menu-end status-dropdown">
+                                        <?php foreach (STATUSES as $key => $cfg):
+                                            if ($key === $status) continue; // aktuellen Status überspringen
+                                        ?>
+                                            <li>
+                                                <?php if ($key === 'versendet'): ?>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="openShipModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?>
+                                                    </button>
+                                                <?php elseif ($key === 'angebot_gesendet'): ?>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="openQuoteModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?>
+                                                    </button>
+                                                <?php elseif ($key === 'bestaetigt'): ?>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="openInvoiceModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>', '<?= h(addslashes($r['quote_price'] ?? '')) ?>')">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?> &amp; Rechnung senden
+                                                    </button>
+                                                <?php else: ?>
+                                                    <form method="post" class="m-0">
+                                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
+                                                        <input type="hidden" name="action" value="set_status">
+                                                        <input type="hidden" name="status" value="<?= h($key) ?>">
+                                                        <button type="submit" class="dropdown-item">
+                                                            <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                            <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                            <?= h($cfg['label']) ?>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
+
+                                <!-- Löschen -->
                                 <form method="post" class="d-inline" onsubmit="return confirm('Diese Anfrage wirklich löschen?');">
                                     <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                    <input type="hidden" name="id" value="<?= h($r['id']) ?>">
-                                    <button name="action" value="delete" class="icon-btn icon-btn-danger" title="Löschen">
+                                    <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
+                                    <input type="hidden" name="action" value="delete">
+                                    <button class="icon-btn icon-btn-danger" title="Löschen">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
@@ -229,6 +533,242 @@ $csrf = generate_csrf_token();
     </div>
 </main>
 
+<!-- Rechnungs-Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content dash-modal">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title" id="invoiceModalLabel">
+                    <i class="bi bi-receipt me-2" style="color:#60a5fa"></i>Rechnung senden
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="invoiceForm">
+                <div class="modal-body">
+                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                    <input type="hidden" name="id"     id="invoiceId">
+                    <input type="hidden" name="action" value="invoice">
+
+                    <p class="text-muted mb-3">Rechnung an <strong id="invoiceName"></strong> senden.</p>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label small">Rechnungsnummer <span class="text-muted">(optional)</span></label>
+                            <input type="text" name="inv_nr" id="invoiceNr"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   placeholder="z.B. 2024-001" maxlength="50">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small">Betrag <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-transparent border-secondary">
+                                    <i class="bi bi-currency-euro text-muted"></i>
+                                </span>
+                                <input type="text" name="inv_price" id="invoicePrice"
+                                       class="form-control bg-transparent border-secondary text-white"
+                                       placeholder="z.B. 24,50 €" maxlength="100" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label small">Zahlungsziel <span class="text-muted">(optional)</span></label>
+                            <input type="date" name="inv_due" id="invoiceDue"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   style="color-scheme:dark">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small">IBAN <span class="text-muted">(optional)</span></label>
+                            <input type="text" name="inv_iban" id="invoiceIban"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   placeholder="IT60 X054 2811 1010 0000 0123 456" maxlength="40">
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small">Hinweise <span class="text-muted">(optional)</span></label>
+                        <textarea name="inv_note" id="invoiceNote" rows="2"
+                                  class="form-control bg-transparent border-secondary text-white"
+                                  placeholder="z.B. Bitte Rechnungsnummer als Verwendungszweck angeben."
+                                  maxlength="500"></textarea>
+                    </div>
+
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Der Kunde erhält die Rechnung per E-Mail. Status wird auf „Bestätigt" gesetzt.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn-hero-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-send me-1"></i> Rechnung senden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Angebot-Modal -->
+<div class="modal fade" id="quoteModal" tabindex="-1" aria-labelledby="quoteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content dash-modal">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title" id="quoteModalLabel">
+                    <i class="bi bi-envelope-open me-2" style="color:#fb923c"></i>Angebot senden
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="quoteForm">
+                <div class="modal-body">
+                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                    <input type="hidden" name="id"     id="quoteId">
+                    <input type="hidden" name="action" value="quote">
+
+                    <p class="text-muted mb-3">Angebot an <strong id="quoteName"></strong> senden.</p>
+
+                    <div class="mb-3">
+                        <label for="quotePrice" class="form-label small">
+                            Preis <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-secondary">
+                                <i class="bi bi-currency-euro text-muted"></i>
+                            </span>
+                            <input type="text"
+                                   id="quotePrice"
+                                   name="price"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   placeholder="z.B. 24,50 €  oder  ab 20 €"
+                                   maxlength="100"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quoteValid" class="form-label small">
+                            Gültig bis <span class="text-muted">(optional)</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-secondary">
+                                <i class="bi bi-calendar3 text-muted"></i>
+                            </span>
+                            <input type="date"
+                                   id="quoteValid"
+                                   name="valid"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   style="color-scheme:dark">
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label for="quoteNote" class="form-label small">
+                            Nachricht / Hinweise <span class="text-muted">(optional)</span>
+                        </label>
+                        <textarea id="quoteNote"
+                                  name="note"
+                                  rows="3"
+                                  class="form-control bg-transparent border-secondary text-white"
+                                  placeholder="z.B. Preis gilt für PLA, Lieferzeit ca. 3–5 Werktage …"
+                                  maxlength="1000"></textarea>
+                    </div>
+
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Der Kunde erhält das Angebot per E-Mail und kann es per Antwort-Mail annehmen.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn-hero-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-send me-1"></i> Angebot senden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Versand-Modal -->
+<div class="modal fade" id="shipModal" tabindex="-1" aria-labelledby="shipModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content dash-modal">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title" id="shipModalLabel">
+                    <i class="bi bi-truck me-2 text-accent"></i>Paket versendet
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="shipForm">
+                <div class="modal-body">
+                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                    <input type="hidden" name="id"     id="shipId">
+                    <input type="hidden" name="action" value="ship">
+
+                    <p class="text-muted mb-3">Anfrage von <strong id="shipName"></strong> als versendet markieren.</p>
+
+                    <label for="trackingInput" class="form-label small">
+                        Tracking-Nummer <span class="text-muted">(optional)</span>
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-transparent border-secondary">
+                            <i class="bi bi-upc-scan text-muted"></i>
+                        </span>
+                        <input type="text"
+                               id="trackingInput"
+                               name="tracking"
+                               class="form-control bg-transparent border-secondary text-white"
+                               placeholder="z.B. 1Z999AA10123456784"
+                               maxlength="100">
+                    </div>
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Der Kunde erhält automatisch eine Versandbestätigung per E-Mail.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn-hero-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-truck me-1"></i> Versendet &amp; E-Mail senden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function openInvoiceModal(id, name, quotePrice) {
+    document.getElementById('invoiceId').value    = id;
+    document.getElementById('invoiceName').textContent = name;
+    document.getElementById('invoicePrice').value = quotePrice;
+    document.getElementById('invoiceNr').value    = '';
+    document.getElementById('invoiceDue').value   = '';
+    document.getElementById('invoiceIban').value  = '';
+    document.getElementById('invoiceNote').value  = '';
+    // Zahlungsziel: 14 Tage ab heute vorausfüllen
+    const due = new Date(); due.setDate(due.getDate() + 14);
+    document.getElementById('invoiceDue').value = due.toISOString().split('T')[0];
+    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
+}
+
+function openQuoteModal(id, name) {
+    document.getElementById('quoteId').value          = id;
+    document.getElementById('quoteName').textContent  = name;
+    document.getElementById('quotePrice').value       = '';
+    document.getElementById('quoteNote').value        = '';
+    document.getElementById('quoteValid').value       = '';
+    new bootstrap.Modal(document.getElementById('quoteModal')).show();
+}
+
+function openShipModal(id, name) {
+    document.getElementById('shipId').value          = id;
+    document.getElementById('shipName').textContent  = name;
+    document.getElementById('trackingInput').value   = '';
+    new bootstrap.Modal(document.getElementById('shipModal')).show();
+}
+</script>
 </body>
 </html>
