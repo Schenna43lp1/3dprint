@@ -126,6 +126,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+/* ── Besucher-Statistiken laden ── */
+function load_visitors(): array {
+    $log = UPLOAD_DIR . 'visitors.json';
+    if (!is_file($log)) return [];
+    $data = json_decode((string) file_get_contents($log), true);
+    return is_array($data) ? $data : [];
+}
+
+$visitors     = load_visitors();
+$this_month   = date('Y-m');
+$last_month   = date('Y-m', strtotime('-1 month'));
+
+$month_views   = 0;
+$month_unique  = [];
+$lmonth_views  = 0;
+$lmonth_unique = [];
+$today_views   = 0;
+
+foreach ($visitors as $e) {
+    if (($e['month'] ?? '') === $this_month) {
+        $month_views  += $e['views'] ?? 0;
+        foreach ($e['ip_hashes'] ?? [] as $h) $month_unique[$h] = true;
+        if (($e['date'] ?? '') === date('Y-m-d')) $today_views += $e['views'] ?? 0;
+    }
+    if (($e['month'] ?? '') === $last_month) {
+        $lmonth_views  += $e['views'] ?? 0;
+        foreach ($e['ip_hashes'] ?? [] as $h) $lmonth_unique[$h] = true;
+    }
+}
+$month_unique_count  = count($month_unique);
+$lmonth_unique_count = count($lmonth_unique);
+
+// Letzten 14 Tage für Mini-Chart
+$chart_days   = [];
+$chart_views  = [];
+$chart_unique = [];
+for ($i = 13; $i >= 0; $i--) {
+    $d = date('Y-m-d', strtotime("-{$i} days"));
+    $chart_days[] = date('d.m', strtotime($d));
+    $dv = 0; $du = [];
+    foreach ($visitors as $e) {
+        if (($e['date'] ?? '') === $d) {
+            $dv += $e['views'] ?? 0;
+            foreach ($e['ip_hashes'] ?? [] as $h) $du[$h] = true;
+        }
+    }
+    $chart_views[]  = $dv;
+    $chart_unique[] = count($du);
+}
+
 $requests = load_requests();
 usort($requests, fn($a, $b) => ($b['ts'] ?? 0) <=> ($a['ts'] ?? 0));
 
@@ -329,7 +379,55 @@ TEXT . mail_footer());
         </div>
     <?php endif; ?>
 
-    <!-- Stat-Karten -->
+    <!-- Stat-Karten: Besucher -->
+    <h6 class="dash-section-label">Besucher</h6>
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="stat-card stat-card-accent">
+                <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
+                <div>
+                    <div class="stat-value"><?= $month_unique_count ?></div>
+                    <div class="stat-label">Unique – <?= date('M Y') ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="bi bi-eye-fill"></i></div>
+                <div>
+                    <div class="stat-value"><?= $month_views ?></div>
+                    <div class="stat-label">Seitenaufrufe – <?= date('M Y') ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="bi bi-calendar-day"></i></div>
+                <div>
+                    <div class="stat-value"><?= $today_views ?></div>
+                    <div class="stat-label">Aufrufe heute</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="bi bi-arrow-<?= $month_unique_count >= $lmonth_unique_count ? 'up' : 'down' ?>-circle"></i></div>
+                <div>
+                    <div class="stat-value"><?= $lmonth_unique_count ?></div>
+                    <div class="stat-label">Unique – <?= date('M Y', strtotime('-1 month')) ?></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mini-Chart: letzte 14 Tage -->
+    <div class="dash-card mb-4">
+        <h2 class="dash-card-title mb-3"><i class="bi bi-bar-chart-line me-2"></i>Besucher – letzte 14 Tage</h2>
+        <canvas id="visitorChart" height="80"></canvas>
+    </div>
+
+    <!-- Stat-Karten: Anfragen -->
+    <h6 class="dash-section-label">Anfragen</h6>
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
             <div class="stat-card">
@@ -345,7 +443,7 @@ TEXT . mail_footer());
                 <div class="stat-icon"><i class="bi bi-calendar-day-fill"></i></div>
                 <div>
                     <div class="stat-value"><?= $today ?></div>
-                    <div class="stat-label">Heute</div>
+                    <div class="stat-label">Anfragen heute</div>
                 </div>
             </div>
         </div>
@@ -739,7 +837,57 @@ TEXT . mail_footer());
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+// Besucher-Chart
+(function () {
+    const ctx = document.getElementById('visitorChart');
+    if (!ctx) return;
+    const labels  = <?= json_encode($chart_days) ?>;
+    const views   = <?= json_encode($chart_views) ?>;
+    const unique  = <?= json_encode($chart_unique) ?>;
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Seitenaufrufe',
+                    data: views,
+                    backgroundColor: 'rgba(0,212,255,0.25)',
+                    borderColor: 'rgba(0,212,255,0.8)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Unique Besucher',
+                    data: unique,
+                    backgroundColor: 'rgba(167,139,250,0.3)',
+                    borderColor: 'rgba(167,139,250,0.8)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    type: 'line',
+                    tension: 0.3,
+                    pointRadius: 3,
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { labels: { color: '#8b97b0', font: { size: 12 } } },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                x: { ticks: { color: '#8b97b0', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { ticks: { color: '#8b97b0', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true }
+            }
+        }
+    });
+}());
+
 function openInvoiceModal(id, name, quotePrice) {
     document.getElementById('invoiceId').value    = id;
     document.getElementById('invoiceName').textContent = name;

@@ -166,4 +166,23 @@
         });
     });
 
+    // ── Cookie Consent Banner ─────────────────
+    (function () {
+        const banner = document.getElementById('cookieBanner');
+        const btn    = document.getElementById('cookieAccept');
+        if (!banner || !btn) return;
+
+        if (!localStorage.getItem('cookie_consent')) {
+            setTimeout(() => { banner.hidden = false; }, 600);
+        }
+
+        btn.addEventListener('click', function () {
+            localStorage.setItem('cookie_consent', '1');
+            banner.style.transition = 'opacity 0.3s, transform 0.3s';
+            banner.style.opacity = '0';
+            banner.style.transform = 'translateX(-50%) translateY(16px)';
+            setTimeout(() => { banner.hidden = true; }, 300);
+        });
+    }());
+
 })();

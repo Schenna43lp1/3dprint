@@ -84,5 +84,24 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <!-- Custom JS -->
 <script src="/assets/js/main.js"></script>
+
+<!-- Cookie Consent Banner -->
+<div id="cookieBanner" class="cookie-banner" role="dialog" aria-label="Cookie-Hinweis" aria-live="polite" hidden>
+    <div class="cookie-banner-inner">
+        <div class="cookie-text">
+            <i class="bi bi-shield-check me-2 text-accent"></i>
+            <span>
+                Diese Website verwendet technisch notwendige Cookies für Formularsicherheit (CSRF-Schutz).
+                Zusätzlich erfassen wir anonymisierte Besuchsstatistiken (kein Werbetracking, keine Weitergabe an Dritte).
+                <a href="/datenschutz.php" class="cookie-link">Datenschutz</a>
+            </span>
+        </div>
+        <div class="cookie-actions">
+            <button id="cookieAccept" class="btn btn-primary-custom btn-sm">
+                <i class="bi bi-check-lg me-1"></i>Verstanden
+            </button>
+        </div>
+    </div>
+</div>
 </body>
 </html>

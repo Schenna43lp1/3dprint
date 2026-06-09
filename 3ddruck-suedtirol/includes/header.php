@@ -1,6 +1,50 @@
 <?php
 require_once __DIR__ . '/config.php';
 
+/* ── Besucher-Tracking ── */
+(function () {
+    // Bots und CLI-Aufrufe ignorieren
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    if (empty($ua) || preg_match('/bot|crawl|spider|slurp|curl|wget|python|go-http/i', $ua)) return;
+
+    $log = UPLOAD_DIR . 'visitors.json';
+    if (!is_dir(UPLOAD_DIR)) return;
+
+    $today   = date('Y-m-d');
+    $month   = date('Y-m');
+    $ip_hash = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . $month);
+
+    $data = [];
+    if (is_file($log)) {
+        $raw = json_decode((string) file_get_contents($log), true);
+        if (is_array($raw)) $data = $raw;
+    }
+
+    // Heutiger Eintrag suchen oder anlegen
+    $found = false;
+    foreach ($data as &$entry) {
+        if (($entry['date'] ?? '') === $today) {
+            $entry['views']++;
+            if (!in_array($ip_hash, $entry['ip_hashes'] ?? [], true)) {
+                $entry['ip_hashes'][] = $ip_hash;
+            }
+            $found = true;
+            break;
+        }
+    }
+    unset($entry);
+
+    if (!$found) {
+        $data[] = ['date' => $today, 'month' => $month, 'views' => 1, 'ip_hashes' => [$ip_hash]];
+    }
+
+    // Einträge älter als 13 Monate löschen (Datensparsamkeit)
+    $cutoff = date('Y-m', strtotime('-13 months'));
+    $data   = array_values(array_filter($data, fn($e) => ($e['month'] ?? '') >= $cutoff));
+
+    file_put_contents($log, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
+})();
+
 $page_title    = $page_title    ?? SITE_NAME;
 $page_desc     = $page_desc     ?? 'Professioneller 3D-Druckservice in Südtirol. STL-Dateien drucken lassen – schnell, günstig und lokal.';
 $page_keywords = $page_keywords ?? '3D Druck Südtirol, 3D Druckservice, STL drucken, FDM Druck, Prototypen, Ersatzteile';
