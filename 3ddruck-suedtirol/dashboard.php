@@ -3,6 +3,19 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/config.php';
 require_admin();
 
+/* ── Status-Konfiguration ── */
+const STATUSES = [
+    'offen'            => ['label' => 'Offen',             'icon' => 'bi-inbox',            'color' => '#f59e0b', 'bg' => 'rgba(245,158,11,0.12)',  'border' => 'rgba(245,158,11,0.3)'],
+    'angebot_gesendet' => ['label' => 'Angebot gesendet',  'icon' => 'bi-envelope-open',    'color' => '#fb923c', 'bg' => 'rgba(251,146,60,0.12)',  'border' => 'rgba(251,146,60,0.3)'],
+    'bestaetigt'       => ['label' => 'Bestätigt',         'icon' => 'bi-hand-thumbs-up',   'color' => '#60a5fa', 'bg' => 'rgba(96,165,250,0.12)',  'border' => 'rgba(96,165,250,0.3)'],
+    'in_bearbeitung'   => ['label' => 'In Bearbeitung',    'icon' => 'bi-printer',          'color' => '#a78bfa', 'bg' => 'rgba(167,139,250,0.12)', 'border' => 'rgba(167,139,250,0.3)'],
+    'druckfertig'      => ['label' => 'Druckfertig',       'icon' => 'bi-check2-all',       'color' => '#34d399', 'bg' => 'rgba(52,211,153,0.12)',  'border' => 'rgba(52,211,153,0.3)'],
+    'abholbereit'      => ['label' => 'Abholbereit',       'icon' => 'bi-bag-check',        'color' => '#4ade80', 'bg' => 'rgba(74,222,128,0.12)',  'border' => 'rgba(74,222,128,0.3)'],
+    'versendet'        => ['label' => 'Versendet',         'icon' => 'bi-truck',            'color' => '#00d4ff', 'bg' => 'rgba(0,212,255,0.10)',   'border' => 'rgba(0,212,255,0.3)'],
+    'erledigt'         => ['label' => 'Erledigt',          'icon' => 'bi-check-circle',     'color' => '#86efac', 'bg' => 'rgba(134,239,172,0.12)', 'border' => 'rgba(134,239,172,0.3)'],
+    'storniert'        => ['label' => 'Storniert',         'icon' => 'bi-x-circle',         'color' => '#f87171', 'bg' => 'rgba(248,113,113,0.12)', 'border' => 'rgba(248,113,113,0.3)'],
+];
+
 /* ── Hilfsfunktionen ── */
 function load_requests(): array {
     if (!is_file(REQUEST_LOG)) return [];
@@ -14,7 +27,6 @@ function save_requests(array $rows): void {
     file_put_contents(REQUEST_LOG, json_encode(array_values($rows), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
-// Rückwärtskompatibel: alte done-Boolean → neuer Status-String
 function get_status(array $r): string {
     if (!empty($r['status'])) return $r['status'];
     return !empty($r['done']) ? 'erledigt' : 'offen';
@@ -46,16 +58,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             } elseif ($action === 'set_status') {
                 $new_status = $_POST['status'] ?? '';
-                $allowed    = ['offen', 'in_bearbeitung', 'erledigt'];
-                if (!in_array($new_status, $allowed, true)) break;
+                if (!array_key_exists($new_status, STATUSES)) break;
 
                 $old_status = get_status($r);
                 $rows[$i]['status'] = $new_status;
                 $rows[$i]['done']   = ($new_status === 'erledigt');
-                $flash = 'Status aktualisiert.';
+                $flash = 'Status: ' . STATUSES[$new_status]['label'];
 
-                if ($new_status === 'erledigt' && $old_status !== 'erledigt') {
-                    notify_customer_done($rows[$i]);
+                if ($new_status !== $old_status) {
+                    if ($new_status === 'abholbereit')  notify_customer_pickup($rows[$i]);
+                    if ($new_status === 'erledigt')     notify_customer_done($rows[$i]);
+                    if ($new_status === 'storniert')    notify_customer_cancelled($rows[$i]);
                 }
 
             } elseif ($action === 'ship') {
@@ -63,8 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $rows[$i]['status']   = 'versendet';
                 $rows[$i]['done']     = false;
                 $rows[$i]['tracking'] = $tracking;
-                $flash = 'Als versendet markiert' . ($tracking ? ' – Tracking-Nr. gespeichert.' : '.');
-
+                $flash = 'Versendet' . ($tracking ? ' – Tracking-Nr. gespeichert.' : '.');
                 notify_customer_shipped($rows[$i]);
             }
             break;
@@ -78,99 +90,88 @@ usort($requests, fn($a, $b) => ($b['ts'] ?? 0) <=> ($a['ts'] ?? 0));
 
 $total    = count($requests);
 $today    = count(array_filter($requests, fn($r) => date('Y-m-d', $r['ts'] ?? 0) === date('Y-m-d')));
-$open     = count(array_filter($requests, fn($r) => in_array(get_status($r), ['offen', 'in_bearbeitung'])));
+$active   = count(array_filter($requests, fn($r) => !in_array(get_status($r), ['erledigt', 'storniert'])));
 $withFile = count(array_filter($requests, fn($r) => !empty($r['file_stored'])));
 
 $csrf = generate_csrf_token();
 
 /* ── E-Mail-Funktionen ── */
-function notify_customer_shipped(array $r): void {
-    $name     = $r['name']     ?? 'Kunde';
-    $email    = $r['email']    ?? '';
-    $tracking = $r['tracking'] ?? '';
+function send_mail_to_customer(array $r, string $subject_plain, string $body): void {
+    $email = $r['email'] ?? '';
     if (!$email) return;
-
-    $subject = '=?UTF-8?B?' . base64_encode('Deine Bestellung wurde versendet – 3D Druck Südtirol') . '?=';
-
-    $tracking_line = $tracking
-        ? "Tracking-Nummer: {$tracking}\n"
-        : "";
-
-    $body = <<<TEXT
-Hallo {$name},
-
-deine Bestellung bei 3D Druck Südtirol ist auf dem Weg!
-
-DEINE BESTELLUNG
-----------------
-Material:  {$r['material']}
-Farbe:     {$r['color']}
-Stückzahl: {$r['quantity']}
-
-VERSANDINFO
------------
-{$tracking_line}
-Bei Fragen zum Versand oder zur Lieferung melde dich jederzeit:
-E-Mail:   info@3ddruck-suedtirol.it
-Telefon:  +39 324 594 3473
-
-Vielen Dank für dein Vertrauen!
-
-Viele Grüße,
-Markus Stufer
-3D Druck Südtirol
---
-3ddruck-suedtirol.it
-TEXT;
-
-    $headers  = "From: info@3ddruck-suedtirol.it\r\n";
-    $headers .= "Reply-To: info@3ddruck-suedtirol.it\r\n";
-    $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
-    $headers .= "Content-Transfer-Encoding: 8bit\r\n";
-
+    $subject = '=?UTF-8?B?' . base64_encode($subject_plain) . '?=';
+    $headers  = "From: info@3ddruck-suedtirol.it\r\nReply-To: info@3ddruck-suedtirol.it\r\n";
+    $headers .= "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n";
     mail($email, $subject, $body, $headers);
 }
 
-function notify_customer_done(array $r): void {
-    $name  = $r['name']  ?? 'Kunde';
-    $email = $r['email'] ?? '';
-    if (!$email) return;
+function order_summary(array $r): string {
+    return "Material:  {$r['material']}\nFarbe:     {$r['color']}\nStückzahl: {$r['quantity']}";
+}
 
-    $subject = '=?UTF-8?B?' . base64_encode('Deine Druckanfrage wurde abgeschlossen – 3D Druck Südtirol') . '?=';
-    $body = <<<TEXT
+function mail_footer(): string {
+    return "\nBei Fragen erreichst du uns jederzeit:\nE-Mail:   info@3ddruck-suedtirol.it\nTelefon:  +39 324 594 3473\n\nViele Grüße,\nMarkus Stufer\n3D Druck Südtirol\n--\n3ddruck-suedtirol.it";
+}
+
+function notify_customer_pickup(array $r): void {
+    $name = $r['name'] ?? 'Kunde';
+    send_mail_to_customer($r, 'Deine Bestellung ist abholbereit – 3D Druck Südtirol', <<<TEXT
 Hallo {$name},
 
-deine Druckanfrage bei 3D Druck Südtirol wurde abgeschlossen und ist bereit!
+deine Bestellung ist fertig und kann jetzt abgeholt werden!
 
 DEINE BESTELLUNG
 ----------------
-Material:  {$r['material']}
-Farbe:     {$r['color']}
-Stückzahl: {$r['quantity']}
+{$r['material']}  ·  {$r['color']}  ·  {$r['quantity']}×
 
-Wir melden uns in Kürze, um die Übergabe / den Versand mit dir abzustimmen.
+Abholadresse: Schennastraße 81, 39017 Schenna (Scena)
+Öffnungszeiten: Mo–Fr 09:00–18:00 Uhr
 
-Bei Fragen erreichst du uns jederzeit:
-E-Mail:   info@3ddruck-suedtirol.it
-Telefon:  +39 324 594 3473
+Bitte melde dich kurz per E-Mail oder Telefon, um einen Abholtermin zu vereinbaren.
+TEXT . mail_footer());
+}
 
+function notify_customer_shipped(array $r): void {
+    $name     = $r['name']     ?? 'Kunde';
+    $tracking = $r['tracking'] ?? '';
+    $t_line   = $tracking ? "Tracking-Nummer: {$tracking}\n" : "";
+    send_mail_to_customer($r, 'Deine Bestellung wurde versendet – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+deine Bestellung ist unterwegs!
+
+DEINE BESTELLUNG
+----------------
+{$r['material']}  ·  {$r['color']}  ·  {$r['quantity']}×
+
+VERSANDINFO
+-----------
+{$t_line}
+TEXT . mail_footer());
+}
+
+function notify_customer_done(array $r): void {
+    $name = $r['name'] ?? 'Kunde';
+    send_mail_to_customer($r, 'Deine Druckanfrage wurde abgeschlossen – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+deine Anfrage bei 3D Druck Südtirol wurde erfolgreich abgeschlossen.
 Vielen Dank für dein Vertrauen!
 
-Viele Grüße,
-Markus Stufer
-3D Druck Südtirol
---
-3ddruck-suedtirol.it
-TEXT;
+DEINE BESTELLUNG
+----------------
+{$r['material']}  ·  {$r['color']}  ·  {$r['quantity']}×
+TEXT . mail_footer());
+}
 
-    $headers  = "From: info@3ddruck-suedtirol.it\r\n";
-    $headers .= "Reply-To: info@3ddruck-suedtirol.it\r\n";
-    $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
-    $headers .= "Content-Transfer-Encoding: 8bit\r\n";
+function notify_customer_cancelled(array $r): void {
+    $name = $r['name'] ?? 'Kunde';
+    send_mail_to_customer($r, 'Deine Anfrage bei 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
 
-    mail($email, $subject, $body, $headers);
+leider müssen wir deine Druckanfrage stornieren.
+Bitte kontaktiere uns bei Fragen direkt per E-Mail oder Telefon.
+TEXT . mail_footer());
 }
 ?>
 <!DOCTYPE html>
@@ -186,6 +187,14 @@ TEXT;
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/css/style.css">
     <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg">
+    <style>
+        .status-dropdown { min-width: 200px; }
+        .status-dropdown .dropdown-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+        .status-dropdown .dropdown-item i { width: 16px; text-align: center; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .row-cancelled td { opacity: 0.45; }
+        .row-done td { opacity: 0.7; }
+    </style>
 </head>
 <body class="dashboard-page">
 
@@ -242,8 +251,8 @@ TEXT;
             <div class="stat-card">
                 <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
                 <div>
-                    <div class="stat-value"><?= $open ?></div>
-                    <div class="stat-label">Offen / In Arbeit</div>
+                    <div class="stat-value"><?= $active ?></div>
+                    <div class="stat-label">Aktiv</div>
                 </div>
             </div>
         </div>
@@ -275,7 +284,7 @@ TEXT;
                 <table class="table dash-table align-middle">
                     <thead>
                         <tr>
-                            <th>Status</th>
+                            <th style="min-width:160px">Status</th>
                             <th>Datum</th>
                             <th>Kunde</th>
                             <th>Material</th>
@@ -288,22 +297,28 @@ TEXT;
                     <tbody>
                     <?php foreach ($requests as $r):
                         $status = get_status($r);
+                        $sc     = STATUSES[$status] ?? STATUSES['offen'];
+                        $rowClass = match($status) {
+                            'erledigt'  => 'row-done',
+                            'storniert' => 'row-cancelled',
+                            default     => '',
+                        };
                     ?>
-                        <tr class="<?= $status === 'erledigt' ? 'row-done' : '' ?>">
+                        <tr class="<?= $rowClass ?>">
                             <td>
-                                <?php if ($status === 'offen'): ?>
-                                    <span class="pill pill-open">Offen</span>
-                                <?php elseif ($status === 'in_bearbeitung'): ?>
-                                    <span class="pill pill-progress"><i class="bi bi-printer me-1"></i>In Bearbeitung</span>
-                                <?php elseif ($status === 'versendet'): ?>
-                                    <span class="pill pill-shipped"><i class="bi bi-truck me-1"></i>Versendet</span>
-                                    <?php if (!empty($r['tracking'])): ?>
-                                        <br><span class="text-muted small mt-1 d-inline-block">
-                                            <i class="bi bi-upc-scan me-1"></i><?= h($r['tracking']) ?>
-                                        </span>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <span class="pill pill-done"><i class="bi bi-check-lg me-1"></i>Erledigt</span>
+                                <span class="pill" style="
+                                    background:<?= $sc['bg'] ?>;
+                                    color:<?= $sc['color'] ?>;
+                                    border:1px solid <?= $sc['border'] ?>;
+                                    display:inline-flex;align-items:center;gap:.3rem;
+                                    font-size:.72rem;font-weight:700;
+                                    padding:.2rem .6rem;border-radius:50px;white-space:nowrap;">
+                                    <i class="bi <?= $sc['icon'] ?>"></i><?= h($sc['label']) ?>
+                                </span>
+                                <?php if ($status === 'versendet' && !empty($r['tracking'])): ?>
+                                    <br><span class="text-muted small mt-1 d-inline-block">
+                                        <i class="bi bi-upc-scan me-1"></i><?= h($r['tracking']) ?>
+                                    </span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-nowrap small">
@@ -333,60 +348,41 @@ TEXT;
                                 <?php endif; ?>
                             </td>
                             <td class="text-end text-nowrap">
-                                <?php if ($status === 'offen'): ?>
-                                    <!-- → In Bearbeitung -->
-                                    <form method="post" class="d-inline">
-                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
-                                        <input type="hidden" name="action" value="set_status">
-                                        <input type="hidden" name="status" value="in_bearbeitung">
-                                        <button class="icon-btn icon-btn-progress" title="In Bearbeitung">
-                                            <i class="bi bi-printer"></i>
-                                        </button>
-                                    </form>
-
-                                <?php elseif ($status === 'in_bearbeitung'): ?>
-                                    <!-- → Versendet (Modal) -->
-                                    <button class="icon-btn icon-btn-ship"
-                                            title="Versendet"
-                                            onclick="openShipModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
-                                        <i class="bi bi-truck"></i>
+                                <!-- Status-Dropdown -->
+                                <div class="dropdown d-inline-block">
+                                    <button class="icon-btn" title="Status ändern"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="bi bi-arrow-left-right"></i>
                                     </button>
-                                    <!-- → Erledigt -->
-                                    <form method="post" class="d-inline">
-                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
-                                        <input type="hidden" name="action" value="set_status">
-                                        <input type="hidden" name="status" value="erledigt">
-                                        <button class="icon-btn" title="Als erledigt markieren">
-                                            <i class="bi bi-check2-square"></i>
-                                        </button>
-                                    </form>
-
-                                <?php elseif ($status === 'versendet'): ?>
-                                    <!-- → Erledigt -->
-                                    <form method="post" class="d-inline">
-                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
-                                        <input type="hidden" name="action" value="set_status">
-                                        <input type="hidden" name="status" value="erledigt">
-                                        <button class="icon-btn" title="Als erledigt markieren">
-                                            <i class="bi bi-check2-square"></i>
-                                        </button>
-                                    </form>
-
-                                <?php else: /* erledigt */ ?>
-                                    <!-- → Wieder öffnen -->
-                                    <form method="post" class="d-inline">
-                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
-                                        <input type="hidden" name="action" value="set_status">
-                                        <input type="hidden" name="status" value="offen">
-                                        <button class="icon-btn icon-btn-reopen" title="Wieder öffnen">
-                                            <i class="bi bi-arrow-counterclockwise"></i>
-                                        </button>
-                                    </form>
-                                <?php endif; ?>
+                                    <ul class="dropdown-menu dropdown-menu-end status-dropdown">
+                                        <?php foreach (STATUSES as $key => $cfg):
+                                            if ($key === $status) continue; // aktuellen Status überspringen
+                                        ?>
+                                            <li>
+                                                <?php if ($key === 'versendet'): ?>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="openShipModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?>
+                                                    </button>
+                                                <?php else: ?>
+                                                    <form method="post" class="m-0">
+                                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
+                                                        <input type="hidden" name="action" value="set_status">
+                                                        <input type="hidden" name="status" value="<?= h($key) ?>">
+                                                        <button type="submit" class="dropdown-item">
+                                                            <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                            <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                            <?= h($cfg['label']) ?>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
 
                                 <!-- Löschen -->
                                 <form method="post" class="d-inline" onsubmit="return confirm('Diese Anfrage wirklich löschen?');">
@@ -441,7 +437,7 @@ TEXT;
                     </div>
                     <p class="text-muted small mt-2">
                         <i class="bi bi-info-circle me-1"></i>
-                        Der Kunde erhält automatisch eine E-Mail mit der Versandbestätigung.
+                        Der Kunde erhält automatisch eine Versandbestätigung per E-Mail.
                     </p>
                 </div>
                 <div class="modal-footer border-0 pt-0">
@@ -458,9 +454,9 @@ TEXT;
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function openShipModal(id, name) {
-    document.getElementById('shipId').value   = id;
-    document.getElementById('shipName').textContent = name;
-    document.getElementById('trackingInput').value  = '';
+    document.getElementById('shipId').value          = id;
+    document.getElementById('shipName').textContent  = name;
+    document.getElementById('trackingInput').value   = '';
     new bootstrap.Modal(document.getElementById('shipModal')).show();
 }
 </script>
