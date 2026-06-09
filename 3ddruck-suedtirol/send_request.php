@@ -118,6 +118,22 @@ if (isset($_FILES['stl_file']) && $_FILES['stl_file']['error'] !== UPLOAD_ERR_NO
     $upload_info = "Datei: {$original_name} (gespeichert als {$safe_name}, " . number_format($file['size'] / 1024, 1) . " KB)";
 }
 
+/* ── Anfrage ins Log schreiben (für das Admin-Dashboard) ── */
+log_request([
+    'id'            => bin2hex(random_bytes(8)),
+    'ts'            => $now,
+    'name'          => $name,
+    'email'         => $email,
+    'phone'         => $phone,
+    'material'      => $material,
+    'color'         => $color,
+    'quantity'      => $quantity,
+    'description'   => $description,
+    'file_original' => $original_name ?? '',
+    'file_stored'   => isset($safe_name) ? $safe_name : '',
+    'done'          => false,
+]);
+
 /* ── Build email ── */
 $subject = '=?UTF-8?B?' . base64_encode('[3D Druck Südtirol] Neue Anfrage von ' . $name) . '?=';
 
@@ -205,6 +221,19 @@ if ($mail_sent) {
 }
 
 /* ── Helpers ── */
+function log_request(array $entry): void {
+    if (!is_dir(UPLOAD_DIR)) {
+        mkdir(UPLOAD_DIR, 0750, true);
+    }
+    $rows = [];
+    if (is_file(REQUEST_LOG)) {
+        $decoded = json_decode((string) file_get_contents(REQUEST_LOG), true);
+        if (is_array($decoded)) $rows = $decoded;
+    }
+    $rows[] = $entry;
+    file_put_contents(REQUEST_LOG, json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
 function redirect_success(): never {
     header('Location: /request.php?success=1');
     exit;
