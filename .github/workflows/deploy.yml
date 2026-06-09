@@ -33,7 +33,7 @@ jobs:
       - name: Deploy to staging
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST_STAGING }}
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
@@ -53,11 +53,10 @@ jobs:
       - name: Deploy to production
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST_PRODUCTION }}
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
             docker stop 3dprint-production || true
             docker rm   3dprint-production || true
             docker run -d --name 3dprint-production \
