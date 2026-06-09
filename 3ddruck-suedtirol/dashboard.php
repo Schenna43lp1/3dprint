@@ -78,6 +78,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $rows[$i]['tracking'] = $tracking;
                 $flash = 'Versendet' . ($tracking ? ' – Tracking-Nr. gespeichert.' : '.');
                 notify_customer_shipped($rows[$i]);
+
+            } elseif ($action === 'quote') {
+                $price   = sanitize($_POST['price']   ?? '');
+                $note    = sanitize($_POST['note']    ?? '');
+                $valid   = sanitize($_POST['valid']   ?? '');
+                if (mb_strlen($price) < 1 || mb_strlen($price) > 100) {
+                    $flash = 'Bitte einen Preis angeben.';
+                    $flash_type = 'error';
+                    break;
+                }
+                $rows[$i]['status']        = 'angebot_gesendet';
+                $rows[$i]['done']          = false;
+                $rows[$i]['quote_price']   = $price;
+                $rows[$i]['quote_note']    = $note;
+                $rows[$i]['quote_valid']   = $valid;
+                $rows[$i]['quote_sent_at'] = time();
+                $flash = 'Angebot gesendet an ' . ($r['email'] ?? '');
+                notify_customer_quote($rows[$i]);
             }
             break;
         }
@@ -111,6 +129,34 @@ function order_summary(array $r): string {
 
 function mail_footer(): string {
     return "\nBei Fragen erreichst du uns jederzeit:\nE-Mail:   info@3ddruck-suedtirol.it\nTelefon:  +39 324 594 3473\n\nViele Grüße,\nMarkus Stufer\n3D Druck Südtirol\n--\n3ddruck-suedtirol.it";
+}
+
+function notify_customer_quote(array $r): void {
+    $name  = $r['name']        ?? 'Kunde';
+    $price = $r['quote_price'] ?? '';
+    $note  = $r['quote_note']  ?? '';
+    $valid = $r['quote_valid'] ?? '';
+
+    $note_block  = $note  ? "\nHINWEIS\n-------\n{$note}\n" : '';
+    $valid_block = $valid ? "\nAngebot gültig bis: {$valid}\n"      : '';
+
+    send_mail_to_customer($r, 'Dein Angebot von 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+vielen Dank für deine Anfrage! Hier ist dein persönliches Angebot:
+
+DEINE ANFRAGE
+-------------
+Material:  {$r['material']}
+Farbe:     {$r['color']}
+Stückzahl: {$r['quantity']}
+
+ANGEBOT
+-------
+Preis: {$price}
+{$valid_block}{$note_block}
+Um das Angebot anzunehmen, antworte einfach auf diese E-Mail oder melde dich telefonisch.
+TEXT . mail_footer());
 }
 
 function notify_customer_pickup(array $r): void {
@@ -319,6 +365,13 @@ TEXT . mail_footer());
                                     <br><span class="text-muted small mt-1 d-inline-block">
                                         <i class="bi bi-upc-scan me-1"></i><?= h($r['tracking']) ?>
                                     </span>
+                                <?php elseif ($status === 'angebot_gesendet' && !empty($r['quote_price'])): ?>
+                                    <br><span class="text-muted small mt-1 d-inline-block">
+                                        <i class="bi bi-currency-euro me-1"></i><?= h($r['quote_price']) ?>
+                                        <?php if (!empty($r['quote_valid'])): ?>
+                                            · bis <?= h(date('d.m.Y', strtotime($r['quote_valid']))) ?>
+                                        <?php endif; ?>
+                                    </span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-nowrap small">
@@ -366,6 +419,13 @@ TEXT . mail_footer());
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
                                                     </button>
+                                                <?php elseif ($key === 'angebot_gesendet'): ?>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="openQuoteModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>')">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?>
+                                                    </button>
                                                 <?php else: ?>
                                                     <form method="post" class="m-0">
                                                         <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
@@ -402,6 +462,86 @@ TEXT . mail_footer());
         <?php endif; ?>
     </div>
 </main>
+
+<!-- Angebot-Modal -->
+<div class="modal fade" id="quoteModal" tabindex="-1" aria-labelledby="quoteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content dash-modal">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title" id="quoteModalLabel">
+                    <i class="bi bi-envelope-open me-2" style="color:#fb923c"></i>Angebot senden
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="quoteForm">
+                <div class="modal-body">
+                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                    <input type="hidden" name="id"     id="quoteId">
+                    <input type="hidden" name="action" value="quote">
+
+                    <p class="text-muted mb-3">Angebot an <strong id="quoteName"></strong> senden.</p>
+
+                    <div class="mb-3">
+                        <label for="quotePrice" class="form-label small">
+                            Preis <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-secondary">
+                                <i class="bi bi-currency-euro text-muted"></i>
+                            </span>
+                            <input type="text"
+                                   id="quotePrice"
+                                   name="price"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   placeholder="z.B. 24,50 €  oder  ab 20 €"
+                                   maxlength="100"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quoteValid" class="form-label small">
+                            Gültig bis <span class="text-muted">(optional)</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-secondary">
+                                <i class="bi bi-calendar3 text-muted"></i>
+                            </span>
+                            <input type="date"
+                                   id="quoteValid"
+                                   name="valid"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   style="color-scheme:dark">
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label for="quoteNote" class="form-label small">
+                            Nachricht / Hinweise <span class="text-muted">(optional)</span>
+                        </label>
+                        <textarea id="quoteNote"
+                                  name="note"
+                                  rows="3"
+                                  class="form-control bg-transparent border-secondary text-white"
+                                  placeholder="z.B. Preis gilt für PLA, Lieferzeit ca. 3–5 Werktage …"
+                                  maxlength="1000"></textarea>
+                    </div>
+
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Der Kunde erhält das Angebot per E-Mail und kann es per Antwort-Mail annehmen.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn-hero-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-send me-1"></i> Angebot senden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <!-- Versand-Modal -->
 <div class="modal fade" id="shipModal" tabindex="-1" aria-labelledby="shipModalLabel" aria-hidden="true">
@@ -453,6 +593,15 @@ TEXT . mail_footer());
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+function openQuoteModal(id, name) {
+    document.getElementById('quoteId').value          = id;
+    document.getElementById('quoteName').textContent  = name;
+    document.getElementById('quotePrice').value       = '';
+    document.getElementById('quoteNote').value        = '';
+    document.getElementById('quoteValid').value       = '';
+    new bootstrap.Modal(document.getElementById('quoteModal')).show();
+}
+
 function openShipModal(id, name) {
     document.getElementById('shipId').value          = id;
     document.getElementById('shipName').textContent  = name;
