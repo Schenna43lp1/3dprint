@@ -20,10 +20,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
 
   staging:
     needs: build
@@ -37,13 +40,14 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
-            docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
+            IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
+            docker pull $IMAGE:${{ github.sha }}
             docker stop 3dprint-staging || true
             docker rm   3dprint-staging || true
             docker run -d --name 3dprint-staging \
               --restart unless-stopped \
               -p 8080:80 \
-              ghcr.io/${{ github.repository }}:${{ github.sha }}
+              $IMAGE:${{ github.sha }}
 
   production:
     needs: staging
@@ -57,9 +61,10 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
+            IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
             docker stop 3dprint-production || true
             docker rm   3dprint-production || true
             docker run -d --name 3dprint-production \
               --restart unless-stopped \
               -p 80:80 \
-              ghcr.io/${{ github.repository }}:${{ github.sha }}
+              $IMAGE:${{ github.sha }}
