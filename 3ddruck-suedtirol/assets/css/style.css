@@ -1025,3 +1025,15 @@ h1, h2, h3, h4, h5, h6 {
 .cookie-link:hover { text-decoration: underline; }
 
 .cookie-actions { flex-shrink: 0; }
+
+.dash-section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+.stat-card-accent { border-color: rgba(0,212,255,0.2); }
+.stat-card-accent .stat-icon { color: var(--accent); }
+.stat-card-accent .stat-value { color: var(--accent); }
