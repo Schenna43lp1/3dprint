@@ -8,6 +8,7 @@ const STATUSES = [
     'offen'            => ['label' => 'Offen',             'icon' => 'bi-inbox',            'color' => '#f59e0b', 'bg' => 'rgba(245,158,11,0.12)',  'border' => 'rgba(245,158,11,0.3)'],
     'angebot_gesendet' => ['label' => 'Angebot gesendet',  'icon' => 'bi-envelope-open',    'color' => '#fb923c', 'bg' => 'rgba(251,146,60,0.12)',  'border' => 'rgba(251,146,60,0.3)'],
     'bestaetigt'       => ['label' => 'Bestätigt',         'icon' => 'bi-hand-thumbs-up',   'color' => '#60a5fa', 'bg' => 'rgba(96,165,250,0.12)',  'border' => 'rgba(96,165,250,0.3)'],
+    'bezahlt'          => ['label' => 'Bezahlt',           'icon' => 'bi-cash-coin',        'color' => '#facc15', 'bg' => 'rgba(250,204,21,0.12)',  'border' => 'rgba(250,204,21,0.3)'],
     'in_bearbeitung'   => ['label' => 'In Bearbeitung',    'icon' => 'bi-printer',          'color' => '#a78bfa', 'bg' => 'rgba(167,139,250,0.12)', 'border' => 'rgba(167,139,250,0.3)'],
     'druckfertig'      => ['label' => 'Druckfertig',       'icon' => 'bi-check2-all',       'color' => '#34d399', 'bg' => 'rgba(52,211,153,0.12)',  'border' => 'rgba(52,211,153,0.3)'],
     'abholbereit'      => ['label' => 'Abholbereit',       'icon' => 'bi-bag-check',        'color' => '#4ade80', 'bg' => 'rgba(74,222,128,0.12)',  'border' => 'rgba(74,222,128,0.3)'],
