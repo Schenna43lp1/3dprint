@@ -96,6 +96,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $rows[$i]['quote_sent_at'] = time();
                 $flash = 'Angebot gesendet an ' . ($r['email'] ?? '');
                 notify_customer_quote($rows[$i]);
+
+            } elseif ($action === 'invoice') {
+                $inv_nr    = sanitize($_POST['inv_nr']    ?? '');
+                $inv_price = sanitize($_POST['inv_price'] ?? '');
+                $inv_due   = sanitize($_POST['inv_due']   ?? '');
+                $inv_note  = sanitize($_POST['inv_note']  ?? '');
+                $inv_iban  = sanitize($_POST['inv_iban']  ?? '');
+                if (mb_strlen($inv_price) < 1) {
+                    $flash = 'Bitte einen Rechnungsbetrag angeben.';
+                    $flash_type = 'error';
+                    break;
+                }
+                $rows[$i]['status']       = 'bestaetigt';
+                $rows[$i]['done']         = false;
+                $rows[$i]['inv_nr']       = $inv_nr;
+                $rows[$i]['inv_price']    = $inv_price;
+                $rows[$i]['inv_due']      = $inv_due;
+                $rows[$i]['inv_note']     = $inv_note;
+                $rows[$i]['inv_iban']     = $inv_iban;
+                $rows[$i]['inv_sent_at']  = time();
+                $flash = 'Rechnung gesendet an ' . ($r['email'] ?? '');
+                notify_customer_invoice($rows[$i]);
             }
             break;
         }
@@ -156,6 +178,39 @@ ANGEBOT
 Preis: {$price}
 {$valid_block}{$note_block}
 Um das Angebot anzunehmen, antworte einfach auf diese E-Mail oder melde dich telefonisch.
+TEXT . mail_footer());
+}
+
+function notify_customer_invoice(array $r): void {
+    $name      = $r['name']      ?? 'Kunde';
+    $inv_nr    = $r['inv_nr']    ?? '';
+    $inv_price = $r['inv_price'] ?? '';
+    $inv_due   = $r['inv_due']   ?? '';
+    $inv_note  = $r['inv_note']  ?? '';
+    $inv_iban  = $r['inv_iban']  ?? '';
+
+    $nr_line   = $inv_nr   ? "Rechnungsnummer: {$inv_nr}\n"                                                             : '';
+    $due_line  = $inv_due  ? "Zahlungsziel:    " . date('d.m.Y', strtotime($inv_due)) . "\n"                            : '';
+    $iban_line = $inv_iban ? "\nZahlungsinformationen\n---------------------\nIBAN: {$inv_iban}\nInhaber: Markus Stufer\n" : '';
+    $note_line = $inv_note ? "\nHINWEIS\n-------\n{$inv_note}\n"                                                         : '';
+
+    send_mail_to_customer($r, 'Rechnung – 3D Druck Südtirol', <<<TEXT
+Hallo {$name},
+
+vielen Dank für deine Bestellung! Anbei deine Rechnung.
+
+RECHNUNGSDETAILS
+----------------
+{$nr_line}Betrag:          {$inv_price}
+{$due_line}
+DEINE BESTELLUNG
+----------------
+Material:  {$r['material']}
+Farbe:     {$r['color']}
+Stückzahl: {$r['quantity']}
+{$iban_line}{$note_line}
+Bitte überweise den Betrag bis zum Zahlungsziel.
+Nach Zahlungseingang beginnen wir sofort mit dem Druck.
 TEXT . mail_footer());
 }
 
@@ -372,6 +427,13 @@ TEXT . mail_footer());
                                             · bis <?= h(date('d.m.Y', strtotime($r['quote_valid']))) ?>
                                         <?php endif; ?>
                                     </span>
+                                <?php elseif ($status === 'bestaetigt' && !empty($r['inv_price'])): ?>
+                                    <br><span class="text-muted small mt-1 d-inline-block">
+                                        <i class="bi bi-receipt me-1"></i><?= h($r['inv_price']) ?>
+                                        <?php if (!empty($r['inv_nr'])): ?>
+                                            · Nr. <?= h($r['inv_nr']) ?>
+                                        <?php endif; ?>
+                                    </span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-nowrap small">
@@ -426,6 +488,13 @@ TEXT . mail_footer());
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
                                                     </button>
+                                                <?php elseif ($key === 'bestaetigt'): ?>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="openInvoiceModal('<?= h($r['id']) ?>', '<?= h(addslashes($r['name'] ?? '')) ?>', '<?= h(addslashes($r['quote_price'] ?? '')) ?>')">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?> &amp; Rechnung senden
+                                                    </button>
                                                 <?php else: ?>
                                                     <form method="post" class="m-0">
                                                         <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
@@ -462,6 +531,83 @@ TEXT . mail_footer());
         <?php endif; ?>
     </div>
 </main>
+
+<!-- Rechnungs-Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content dash-modal">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title" id="invoiceModalLabel">
+                    <i class="bi bi-receipt me-2" style="color:#60a5fa"></i>Rechnung senden
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="invoiceForm">
+                <div class="modal-body">
+                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+                    <input type="hidden" name="id"     id="invoiceId">
+                    <input type="hidden" name="action" value="invoice">
+
+                    <p class="text-muted mb-3">Rechnung an <strong id="invoiceName"></strong> senden.</p>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label small">Rechnungsnummer <span class="text-muted">(optional)</span></label>
+                            <input type="text" name="inv_nr" id="invoiceNr"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   placeholder="z.B. 2024-001" maxlength="50">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small">Betrag <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-transparent border-secondary">
+                                    <i class="bi bi-currency-euro text-muted"></i>
+                                </span>
+                                <input type="text" name="inv_price" id="invoicePrice"
+                                       class="form-control bg-transparent border-secondary text-white"
+                                       placeholder="z.B. 24,50 €" maxlength="100" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label small">Zahlungsziel <span class="text-muted">(optional)</span></label>
+                            <input type="date" name="inv_due" id="invoiceDue"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   style="color-scheme:dark">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small">IBAN <span class="text-muted">(optional)</span></label>
+                            <input type="text" name="inv_iban" id="invoiceIban"
+                                   class="form-control bg-transparent border-secondary text-white"
+                                   placeholder="IT60 X054 2811 1010 0000 0123 456" maxlength="40">
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small">Hinweise <span class="text-muted">(optional)</span></label>
+                        <textarea name="inv_note" id="invoiceNote" rows="2"
+                                  class="form-control bg-transparent border-secondary text-white"
+                                  placeholder="z.B. Bitte Rechnungsnummer als Verwendungszweck angeben."
+                                  maxlength="500"></textarea>
+                    </div>
+
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Der Kunde erhält die Rechnung per E-Mail. Status wird auf „Bestätigt" gesetzt.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn-hero-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-send me-1"></i> Rechnung senden
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <!-- Angebot-Modal -->
 <div class="modal fade" id="quoteModal" tabindex="-1" aria-labelledby="quoteModalLabel" aria-hidden="true">
@@ -593,6 +739,20 @@ TEXT . mail_footer());
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+function openInvoiceModal(id, name, quotePrice) {
+    document.getElementById('invoiceId').value    = id;
+    document.getElementById('invoiceName').textContent = name;
+    document.getElementById('invoicePrice').value = quotePrice;
+    document.getElementById('invoiceNr').value    = '';
+    document.getElementById('invoiceDue').value   = '';
+    document.getElementById('invoiceIban').value  = '';
+    document.getElementById('invoiceNote').value  = '';
+    // Zahlungsziel: 14 Tage ab heute vorausfüllen
+    const due = new Date(); due.setDate(due.getDate() + 14);
+    document.getElementById('invoiceDue').value = due.toISOString().split('T')[0];
+    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
+}
+
 function openQuoteModal(id, name) {
     document.getElementById('quoteId').value          = id;
     document.getElementById('quoteName').textContent  = name;
