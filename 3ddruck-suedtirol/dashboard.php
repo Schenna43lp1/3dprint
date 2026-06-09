@@ -36,8 +36,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($rows[$i]);
                 $flash = 'Anfrage gelöscht.';
             } elseif ($action === 'toggle') {
-                $rows[$i]['done'] = empty($r['done']);
+                $nowDone = empty($r['done']);
+                $rows[$i]['done'] = $nowDone;
                 $flash = 'Status aktualisiert.';
+
+                // Kunde benachrichtigen wenn Anfrage als "Erledigt" markiert wird
+                if ($nowDone && !empty($r['email'])) {
+                    notify_customer_done($r);
+                }
             }
             break;
         }
@@ -55,6 +61,47 @@ $open     = count(array_filter($requests, fn($r) => empty($r['done'])));
 $withFile = count(array_filter($requests, fn($r) => !empty($r['file_stored'])));
 
 $csrf = generate_csrf_token();
+
+function notify_customer_done(array $r): void {
+    $name  = $r['name']  ?? 'Kunde';
+    $email = $r['email'] ?? '';
+    if (!$email) return;
+
+    $subject = '=?UTF-8?B?' . base64_encode('Deine Druckanfrage wurde abgeschlossen – 3D Druck Südtirol') . '?=';
+    $body = <<<TEXT
+Hallo {$name},
+
+deine Druckanfrage bei 3D Druck Südtirol wurde abgeschlossen und ist bereit!
+
+DEINE BESTELLUNG
+----------------
+Material:  {$r['material']}
+Farbe:     {$r['color']}
+Stückzahl: {$r['quantity']}
+
+Wir melden uns in Kürze, um die Übergabe / den Versand mit dir abzustimmen.
+
+Bei Fragen erreichst du uns jederzeit:
+E-Mail:   info@3ddruck-suedtirol.it
+Telefon:  +39 324 594 3473
+
+Vielen Dank für dein Vertrauen!
+
+Viele Grüße,
+Markus Stufer
+3D Druck Südtirol
+--
+3ddruck-suedtirol.it
+TEXT;
+
+    $headers  = "From: info@3ddruck-suedtirol.it\r\n";
+    $headers .= "Reply-To: info@3ddruck-suedtirol.it\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $headers .= "Content-Transfer-Encoding: 8bit\r\n";
+
+    mail($email, $subject, $body, $headers);
+}
 ?>
 <!DOCTYPE html>
 <html lang="de" data-bs-theme="dark">
