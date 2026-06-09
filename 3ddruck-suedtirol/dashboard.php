@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* ── Besucher-Statistiken laden ── */
 function load_visitors(): array {
-    $log = __DIR__ . '/uploads/visitors.json';
+    $log = UPLOAD_DIR . 'visitors.json';
     if (!is_file($log)) return [];
     $data = json_decode((string) file_get_contents($log), true);
     return is_array($data) ? $data : [];

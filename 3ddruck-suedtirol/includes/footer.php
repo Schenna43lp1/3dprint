@@ -91,8 +91,8 @@
         <div class="cookie-text">
             <i class="bi bi-shield-check me-2 text-accent"></i>
             <span>
-                Diese Website verwendet ausschließlich technisch notwendige Cookies für Formularsicherheit (CSRF-Schutz).
-                Kein Tracking, keine Werbung.
+                Diese Website verwendet technisch notwendige Cookies für Formularsicherheit (CSRF-Schutz).
+                Zusätzlich erfassen wir anonymisierte Besuchsstatistiken (kein Werbetracking, keine Weitergabe an Dritte).
                 <a href="/datenschutz.php" class="cookie-link">Datenschutz</a>
             </span>
         </div>

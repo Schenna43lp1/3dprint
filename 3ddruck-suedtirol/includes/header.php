@@ -7,14 +7,12 @@ require_once __DIR__ . '/config.php';
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
     if (empty($ua) || preg_match('/bot|crawl|spider|slurp|curl|wget|python|go-http/i', $ua)) return;
 
-    $log  = __DIR__ . '/../../uploads/visitors.json';
-    $dir  = dirname($log);
-    if (!is_dir($dir)) return;
+    $log = UPLOAD_DIR . 'visitors.json';
+    if (!is_dir(UPLOAD_DIR)) return;
 
     $today   = date('Y-m-d');
     $month   = date('Y-m');
-    $ip_hash = hash('sha256', ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '') . date('Y-m-d'));
-    $page    = strtok($_SERVER['REQUEST_URI'] ?? '/', '?');
+    $ip_hash = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . $month);
 
     $data = [];
     if (is_file($log)) {
