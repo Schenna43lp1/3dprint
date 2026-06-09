@@ -30,7 +30,7 @@ if (!$privacy)                                   redirect_err('Datenschutz nicht
 
 $mail_subject = '=?UTF-8?B?' . base64_encode('[Kontakt] ' . $subject) . '?=';
 $body = "Von: {$name} <{$email}>\n\n{$message}\n\n---\nGesendet: " . date('Y-m-d H:i');
-$headers  = "From: no-reply@3ddruck-suedtirol.it\r\nReply-To: {$email}\r\n";
+$headers  = "From: no-reply@3ddruck-suedtirol.it\r\nReply-To: " . sanitize_email_header($email) . "\r\n";
 $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
 
 mail(SITE_EMAIL, $mail_subject, $body, $headers);

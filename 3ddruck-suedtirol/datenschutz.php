@@ -86,7 +86,7 @@ require_once 'includes/header.php';
                     <p>
                         Du hast das Recht, dich beim <strong>Garante per la protezione dei dati personali</strong>
                         (italienische Datenschutzbehörde) zu beschweren:<br>
-                        <a href="https://www.garanteprivacy.it" target="_blank" rel="noopener" class="text-accent">www.garanteprivacy.it</a>
+                        <a href="https://www.garanteprivacy.it" target="_blank" rel="noopener noreferrer" class="text-accent">www.garanteprivacy.it</a>
                     </p>
 
                 </div>

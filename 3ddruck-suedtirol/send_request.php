@@ -94,13 +94,8 @@ if (isset($_FILES['stl_file']) && $_FILES['stl_file']['error'] !== UPLOAD_ERR_NO
     $finfo    = new finfo(FILEINFO_MIME_TYPE);
     $detected = $finfo->file($file['tmp_name']);
 
-    /* STL/3MF/OBJ are often detected as octet-stream or text/plain — we trust the extension + size */
-    $allowed_mime_prefix = ['application/', 'model/', 'text/plain', 'image/'];
-    $mime_ok = false;
-    foreach ($allowed_mime_prefix as $prefix) {
-        if (str_starts_with($detected, $prefix)) { $mime_ok = true; break; }
-    }
-    if (!$mime_ok) {
+    /* STL/3MF/OBJ are often detected as octet-stream or text/plain — exact whitelist */
+    if (!in_array($detected, ALLOWED_MIME_TYPES, true)) {
         redirect_error('Ungültiger Dateityp (MIME-Prüfung).');
     }
 
@@ -166,8 +161,9 @@ Gesendet am: {$now}
 IP: [anonymisiert]
 TEXT;
 
+$safe_reply = sanitize_email_header($email);
 $headers  = "From: no-reply@3ddruck-suedtirol.it\r\n";
-$headers .= "Reply-To: {$email}\r\n";
+$headers .= "Reply-To: {$safe_reply}\r\n";
 $headers .= "MIME-Version: 1.0\r\n";
 $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
 $headers .= "Content-Transfer-Encoding: 8bit\r\n";
