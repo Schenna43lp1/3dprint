@@ -3,6 +3,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/config.php';
 require_admin();
 
+/* Dashboard ist Admin-only → 'unsafe-inline' für script-src vertretbar */
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+
 /* ── Status-Konfiguration ── */
 const STATUSES = [
     'offen'            => ['label' => 'Offen',             'icon' => 'bi-inbox',            'color' => '#f59e0b', 'bg' => 'rgba(245,158,11,0.12)',  'border' => 'rgba(245,158,11,0.3)'],
