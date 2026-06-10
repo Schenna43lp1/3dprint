@@ -595,17 +595,12 @@ TEXT . mail_footer());
                                                         <?= h($cfg['label']) ?> &amp; Rechnung senden
                                                     </button>
                                                 <?php else: ?>
-                                                    <form method="post" class="m-0">
-                                                        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                                        <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
-                                                        <input type="hidden" name="action" value="set_status">
-                                                        <input type="hidden" name="status" value="<?= h($key) ?>">
-                                                        <button type="submit" class="dropdown-item">
-                                                            <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
-                                                            <i class="bi <?= $cfg['icon'] ?>"></i>
-                                                            <?= h($cfg['label']) ?>
-                                                        </button>
-                                                    </form>
+                                                    <button type="button" class="dropdown-item"
+                                                            onclick="setStatus(<?= json_encode($r['id']) ?>, <?= json_encode($key) ?>)">
+                                                        <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
+                                                        <i class="bi <?= $cfg['icon'] ?>"></i>
+                                                        <?= h($cfg['label']) ?>
+                                                    </button>
                                                 <?php endif; ?>
                                             </li>
                                         <?php endforeach; ?>
@@ -613,14 +608,10 @@ TEXT . mail_footer());
                                 </div>
 
                                 <!-- Löschen -->
-                                <form method="post" class="d-inline" onsubmit="return confirm('Diese Anfrage wirklich löschen?');">
-                                    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
-                                    <input type="hidden" name="id"     value="<?= h($r['id']) ?>">
-                                    <input type="hidden" name="action" value="delete">
-                                    <button class="icon-btn icon-btn-danger" title="Löschen">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </form>
+                                <button class="icon-btn icon-btn-danger" title="Löschen"
+                                        onclick="deleteRequest(<?= json_encode($r['id']) ?>)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -630,6 +621,14 @@ TEXT . mail_footer());
         <?php endif; ?>
     </div>
 </main>
+
+<!-- Hilfs-Form für Status-Änderung und Löschen (außerhalb Tabelle) -->
+<form method="post" id="actionForm" style="display:none">
+    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= h($csrf) ?>">
+    <input type="hidden" name="id"     id="actionId">
+    <input type="hidden" name="action" id="actionName">
+    <input type="hidden" name="status" id="actionStatus">
+</form>
 
 <!-- Rechnungs-Modal -->
 <div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
@@ -909,6 +908,21 @@ function openQuoteModal(id, name) {
     document.getElementById('quoteNote').value        = '';
     document.getElementById('quoteValid').value       = '';
     new bootstrap.Modal(document.getElementById('quoteModal')).show();
+}
+
+function setStatus(id, status) {
+    document.getElementById('actionId').value     = id;
+    document.getElementById('actionName').value   = 'set_status';
+    document.getElementById('actionStatus').value = status;
+    document.getElementById('actionForm').submit();
+}
+
+function deleteRequest(id) {
+    if (!confirm('Diese Anfrage wirklich löschen?')) return;
+    document.getElementById('actionId').value   = id;
+    document.getElementById('actionName').value = 'delete';
+    document.getElementById('actionStatus').value = '';
+    document.getElementById('actionForm').submit();
 }
 
 function openShipModal(id, name) {
