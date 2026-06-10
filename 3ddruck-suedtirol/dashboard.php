@@ -3,8 +3,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/config.php';
 require_admin();
 
-/* Dashboard ist Admin-only → 'unsafe-inline' für script-src vertretbar */
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+/* Nonce-basierte CSP: erlaubt nur das eigene Inline-Script, kein 'unsafe-inline' */
+$csp_nonce = base64_encode(random_bytes(16));
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$csp_nonce}' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 
 /* ── Status-Konfiguration ── */
 const STATUSES = [
@@ -577,29 +578,29 @@ TEXT . mail_footer());
                                         ?>
                                             <li>
                                                 <?php if ($key === 'versendet'): ?>
-                                                    <button type="button" class="dropdown-item"
-                                                            onclick="openShipModal(<?= json_encode($r['id']) ?>, <?= json_encode($r['name'] ?? '') ?>)">
+                                                    <button type="button" class="dropdown-item js-action" data-act="ship-modal"
+                                                            data-id="<?= h($r['id']) ?>" data-name="<?= h($r['name'] ?? '') ?>">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
                                                     </button>
                                                 <?php elseif ($key === 'angebot_gesendet'): ?>
-                                                    <button type="button" class="dropdown-item"
-                                                            onclick="openQuoteModal(<?= json_encode($r['id']) ?>, <?= json_encode($r['name'] ?? '') ?>)">
+                                                    <button type="button" class="dropdown-item js-action" data-act="quote-modal"
+                                                            data-id="<?= h($r['id']) ?>" data-name="<?= h($r['name'] ?? '') ?>">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
                                                     </button>
                                                 <?php elseif ($key === 'bestaetigt'): ?>
-                                                    <button type="button" class="dropdown-item"
-                                                            onclick="openInvoiceModal(<?= json_encode($r['id']) ?>, <?= json_encode($r['name'] ?? '') ?>, <?= json_encode($r['quote_price'] ?? '') ?>)">
+                                                    <button type="button" class="dropdown-item js-action" data-act="invoice-modal"
+                                                            data-id="<?= h($r['id']) ?>" data-name="<?= h($r['name'] ?? '') ?>" data-price="<?= h($r['quote_price'] ?? '') ?>">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?> &amp; Rechnung senden
                                                     </button>
                                                 <?php else: ?>
-                                                    <button type="button" class="dropdown-item"
-                                                            onclick="setStatus(<?= json_encode($r['id']) ?>, <?= json_encode($key) ?>)">
+                                                    <button type="button" class="dropdown-item js-action" data-act="set-status"
+                                                            data-id="<?= h($r['id']) ?>" data-status="<?= h($key) ?>">
                                                         <span class="status-dot" style="background:<?= $cfg['color'] ?>"></span>
                                                         <i class="bi <?= $cfg['icon'] ?>"></i>
                                                         <?= h($cfg['label']) ?>
@@ -611,8 +612,8 @@ TEXT . mail_footer());
                                 </div>
 
                                 <!-- Löschen -->
-                                <button class="icon-btn icon-btn-danger" title="Löschen"
-                                        onclick="deleteRequest(<?= json_encode($r['id']) ?>)">
+                                <button class="icon-btn icon-btn-danger js-action" title="Löschen"
+                                        data-act="delete" data-id="<?= h($r['id']) ?>">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </td>
@@ -840,7 +841,7 @@ TEXT . mail_footer());
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
+<script nonce="<?= h($csp_nonce) ?>">
 // Besucher-Chart
 (function () {
     const ctx = document.getElementById('visitorChart');
@@ -934,6 +935,20 @@ function openShipModal(id, name) {
     document.getElementById('trackingInput').value   = '';
     new bootstrap.Modal(document.getElementById('shipModal')).show();
 }
+
+// Event-Delegation statt Inline-Handler (CSP-konform)
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-action');
+    if (!btn) return;
+    const d = btn.dataset;
+    switch (d.act) {
+        case 'set-status':    setStatus(d.id, d.status); break;
+        case 'delete':        deleteRequest(d.id); break;
+        case 'ship-modal':    openShipModal(d.id, d.name); break;
+        case 'quote-modal':   openQuoteModal(d.id, d.name); break;
+        case 'invoice-modal': openInvoiceModal(d.id, d.name, d.price); break;
+    }
+});
 </script>
 </body>
 </html>
