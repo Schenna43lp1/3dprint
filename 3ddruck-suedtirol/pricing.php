@@ -74,7 +74,7 @@ require_once 'includes/header.php';
                     <div class="price-divider"></div>
                     <ul class="feature-list">
                         <li><i class="bi bi-check-circle-fill"></i><span>Teile 5–15 cm</span></li>
-                        <li><i class="bi bi-check-circle-fill"></i><span>PLA, PETG, PLA+</span></li>
+                        <li><i class="bi bi-check-circle-fill"></i><span>PLA, PETG</span></li>
                         <li><i class="bi bi-check-circle-fill"></i><span>Mittlere Komplexität</span></li>
                         <li><i class="bi bi-check-circle-fill"></i><span>Support möglich</span></li>
                         <li><i class="bi bi-check-circle-fill"></i><span>Mehrere Teile</span></li>
@@ -96,7 +96,7 @@ require_once 'includes/header.php';
                     <div class="price-divider"></div>
                     <ul class="feature-list">
                         <li><i class="bi bi-check-circle-fill"></i><span>Große Teile &gt; 15 cm</span></li>
-                        <li><i class="bi bi-check-circle-fill"></i><span>ASA, TPU, PETG</span></li>
+                        <li><i class="bi bi-check-circle-fill"></i><span>PLA, PETG</span></li>
                         <li><i class="bi bi-check-circle-fill"></i><span>Hohe Präzision</span></li>
                         <li><i class="bi bi-check-circle-fill"></i><span>Komplexe Geometrie</span></li>
                         <li><i class="bi bi-check-circle-fill"></i><span>Nachbearbeitung</span></li>
@@ -149,7 +149,7 @@ require_once 'includes/header.php';
                 <div class="card-custom p-3 text-center h-100">
                     <div class="card-icon mx-auto mb-3"><i class="bi bi-layers-fill"></i></div>
                     <h5 class="fw-700">Material</h5>
-                    <p class="small text-muted mb-0">Spezialfilamente wie ASA, TPU oder Metall-Verbundwerkstoffe kosten mehr als Standard-PLA.</p>
+                    <p class="small text-muted mb-0">PETG kostet etwas mehr als Standard-PLA. Auch Füllgrad und Materialverbrauch beeinflussen den Preis.</p>
                 </div>
             </div>
             <div class="col-md-6 col-lg-3 fade-in-up">

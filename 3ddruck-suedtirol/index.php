@@ -33,7 +33,7 @@ require_once 'includes/header.php';
                 <div class="hero-stats">
                     <div class="hero-stat-item">
                         <div class="hero-stat-value">PLA</div>
-                        <div class="hero-stat-label">PETG · ASA · TPU</div>
+                        <div class="hero-stat-label">PLA · PETG</div>
                     </div>
                     <div class="hero-stat-item">
                         <div class="hero-stat-value">50<span style="font-size:1.2rem">MB</span></div>
@@ -194,11 +194,6 @@ require_once 'includes/header.php';
         <div class="d-flex flex-wrap justify-content-center gap-3 fade-in-up">
             <span class="material-badge"><span class="dot" style="background:#4ade80"></span> PLA – Standard</span>
             <span class="material-badge"><span class="dot" style="background:#38bdf8"></span> PETG – Robust</span>
-            <span class="material-badge"><span class="dot" style="background:#fb923c"></span> ASA – UV-beständig</span>
-            <span class="material-badge"><span class="dot" style="background:#a78bfa"></span> TPU – Flexibel</span>
-            <span class="material-badge"><span class="dot" style="background:#f9fafb"></span> PLA+ – Verstärkt</span>
-            <span class="material-badge"><span class="dot" style="background:#fbbf24"></span> Holz-PLA – Optik</span>
-            <span class="material-badge"><span class="dot" style="background:#94a3b8"></span> Seiden-PLA – Glanz</span>
         </div>
         <div class="text-center mt-4 fade-in-up">
             <a href="/services.php#materials" class="text-accent text-decoration-none small">

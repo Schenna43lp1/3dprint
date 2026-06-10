@@ -45,11 +45,11 @@ require_once 'includes/header.php';
                     <div class="card-icon"><i class="bi bi-gear-wide-connected"></i></div>
                     <h3>Funktionsteile & technische Drucke</h3>
                     <p>
-                        Für Anwendungen, bei denen es auf Festigkeit, Maßhaltigkeit und Materialeigenschaften ankommt. Wir wählen gemeinsam das passende Filament (PETG, ASA, PLA+) und die richtigen Druckparameter, um ein mechanisch belastbares Ergebnis zu erzielen.
+                        Für Anwendungen, bei denen es auf Festigkeit, Maßhaltigkeit und Materialeigenschaften ankommt. Wir wählen gemeinsam das passende Filament (PLA, PETG) und die richtigen Druckparameter, um ein mechanisch belastbares Ergebnis zu erzielen.
                     </p>
                     <div class="tags">
                         <span class="service-tag">PETG</span>
-                        <span class="service-tag">ASA</span>
+                        <span class="service-tag">Robust</span>
                         <span class="service-tag">Maßhaltig</span>
                         <span class="service-tag">Technisch</span>
                     </div>
@@ -132,11 +132,7 @@ require_once 'includes/header.php';
             <?php
             $materials = [
                 ['PLA',      '#4ade80', 'Einsteiger & Allgemein',    'Biologisch abbaubar, gute Oberflächenqualität, einfach zu drucken. Ideal für Modelle, Gadgets und Innenanwendungen.', ['Leicht', 'Innen', 'Günstig']],
-                ['PLA+',     '#86efac', 'Verstärktes PLA',           'Erhöhte Schlagzähigkeit und Festigkeit gegenüber Standard-PLA. Gute Wahl für Teile mit leichter mechanischer Belastung.', ['Robuster', 'Innen', 'Mittel']],
                 ['PETG',     '#38bdf8', 'Technisch & Robust',        'Chemikalienbeständig, lebensmittelsicher (je nach Farbe), gute Zähigkeit. Für Funktionsteile, Flüssigkeitsbehälter, mechanische Teile.', ['Robust', 'Chemikalien', 'Innen+Außen']],
-                ['ASA',      '#fb923c', 'UV- & Wetterbeständig',     'Hervorragende UV- und Wetterbeständigkeit. Ideal für Außenanwendungen: Halterungen, Outdoor-Gehäuse, Fahrzeugzubehör.', ['UV-stabil', 'Außen', 'Technisch']],
-                ['TPU',      '#a78bfa', 'Flexibel & Weich',          'Flexibles, gummiartig elastisches Filament. Perfekt für Griffe, Schutzhüllen, Dichtungen und Stoßdämpfer.', ['Flexibel', 'Elastisch', 'Innen']],
-                ['Holz-PLA', '#d97706', 'Holzoptik',                 'Holzfaser-Verbundmaterial auf PLA-Basis. Für dekorative Objekte, die nach echtem Holz aussehen und sich anfühlen sollen.', ['Dekorativ', 'Holzoptik', 'Innen']],
             ];
             foreach ($materials as $m): ?>
                 <div class="col-sm-6 col-lg-4 fade-in-up">

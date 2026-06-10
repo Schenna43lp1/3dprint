@@ -7,7 +7,7 @@ $success = $_GET['success'] ?? '';
 $error   = $_GET['error']   ?? '';
 $csrf    = generate_csrf_token();
 
-$materials = ['PLA (Standard)', 'PLA+ (Verstärkt)', 'PETG (Robust)', 'ASA (UV-beständig)', 'TPU (Flexibel)', 'Holz-PLA (Optik)', 'Seiden-PLA (Glanz)', 'Beratung gewünscht'];
+$materials = ['PLA (Standard)', 'PETG (Robust)', 'Beratung gewünscht'];
 $colors    = ['Schwarz', 'Weiß', 'Grau', 'Silber', 'Rot', 'Blau', 'Grün', 'Gelb', 'Orange', 'Transparent', 'Sonstiges / Egal'];
 ?>
 
